@@ -56,31 +56,74 @@ body {
 a { color: var(--accent-deep); }
 a:hover { color: var(--accent); }
 
+/* Shared header layout tokens — theme colors only on .site-header--home */
 .site-header {
+  --header-pad-y: 1.15rem;
+  --header-pad-x: var(--space);
+  --header-max: 960px;
+  --header-gap: 1.25rem;
+  --logo-height: 3rem;
+  --logo-max-w: min(180px, 48vw);
+  --nav-gap: 0.2rem 1.1rem;
+  --nav-size: 0.9rem;
+  /* Solid fallbacks (no backdrop-filter / reduced-motion) */
+  --header-bg: rgba(248, 249, 251, 0.97);
+  --header-border: rgba(39, 52, 107, 0.1);
+  --header-blur: 14px;
+
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--header-border);
+  background: var(--header-bg);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+/* Frosted glass when supported — soft white on light pages */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-header {
+    --header-bg: rgba(245, 244, 244, 0.72);
+    -webkit-backdrop-filter: blur(var(--header-blur)) saturate(1.15);
+    backdrop-filter: blur(var(--header-blur)) saturate(1.15);
+  }
+}
+
+.site-header__inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.25rem;
-  padding: 1.25rem var(--space);
-  max-width: 960px;
+  gap: var(--header-gap);
+  padding: var(--header-pad-y) var(--header-pad-x);
+  max-width: var(--header-max);
   margin: 0 auto;
   width: 100%;
 }
 
-.site-header-light {
-  border-bottom: 1px solid rgba(39, 52, 107, 0.08);
-  padding-bottom: 1.15rem;
-  margin-bottom: 0.25rem;
+.site-header--home {
+  --header-bg: #27346b;
+  --header-border: rgba(245, 244, 244, 0.12);
 }
 
-.site-header-home {
-  max-width: none;
-  margin: 0;
-  padding: 1rem var(--space);
-  background: var(--ofw-navy);
-  position: relative;
-  z-index: 2;
-  border-bottom: none;
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .site-header--home {
+    --header-bg: rgba(39, 52, 107, 0.78);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header,
+  .site-header--home {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .site-header {
+    --header-bg: rgba(248, 249, 251, 0.98);
+  }
+  .site-header--home {
+    --header-bg: #27346b;
+  }
 }
 
 .brand {
@@ -93,39 +136,34 @@ a:hover { color: var(--accent); }
 
 .brand-logo {
   display: block;
-  height: 3.25rem;
+  height: var(--logo-height);
   width: auto;
-  max-width: min(200px, 52vw);
+  max-width: var(--logo-max-w);
   object-fit: contain;
-}
-
-.site-header-home .brand-logo {
-  height: 2.75rem;
-  max-width: min(160px, 42vw);
 }
 
 .nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.2rem 1.1rem;
+  gap: var(--nav-gap);
   justify-content: flex-end;
 }
 .nav a {
   text-decoration: none;
   color: var(--muted);
   font-weight: 500;
-  font-size: 0.9rem;
+  font-size: var(--nav-size);
   letter-spacing: 0.01em;
 }
 .nav a.is-active,
 .nav a:hover { color: var(--accent-deep); }
 
-.site-header-home .nav a {
-  color: rgba(245, 244, 244, 0.78);
+.site-header--home .nav a {
+  color: rgba(245, 244, 244, 0.88);
 }
-.site-header-home .nav a.is-active,
-.site-header-home .nav a:hover {
-  color: var(--ofw-offwhite);
+.site-header--home .nav a.is-active,
+.site-header--home .nav a:hover {
+  color: #ffffff;
 }
 
 .site-main {
@@ -1069,13 +1107,15 @@ th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; colo
 
 @media (max-width: 720px) {
   .site-header {
+    --header-pad-y: 1rem;
+    --header-gap: 0.85rem;
+    --logo-height: 2.75rem;
+  }
+  .site-header__inner {
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.85rem;
-    padding-top: 1rem;
   }
   .nav { justify-content: flex-start; }
-  .brand-logo { height: 2.75rem; }
 
   .home-hero-inner {
     grid-template-columns: 1fr;

@@ -62,23 +62,25 @@ export function layout(opts: {
 </head>
 <body class="${bodyClass}">
   <div class="page-bg" aria-hidden="true"></div>
-  <header class="site-header${isHome ? " site-header-home" : " site-header-light"}">
-    <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
-      <img
-        class="brand-logo"
-        src="${logoSrc}"
-        alt="OFW Tambayan Singapore — Your Home Away From Home"
-        width="160"
-        height="92"
-        decoding="async"
-      />
-    </a>
-    <nav class="nav" aria-label="Primary">
-      ${nav("home", "/", "Home")}
-      ${nav("register", "/register", "Register")}
-      ${nav("gallery", "/gallery", "Gallery")}
-      ${nav("shorts", "/shorts", "Shorts")}
-    </nav>
+  <header class="site-header${isHome ? " site-header--home" : ""}">
+    <div class="site-header__inner">
+      <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
+        <img
+          class="brand-logo"
+          src="${logoSrc}"
+          alt="OFW Tambayan Singapore — Your Home Away From Home"
+          width="160"
+          height="92"
+          decoding="async"
+        />
+      </a>
+      <nav class="nav" aria-label="Primary">
+        ${nav("home", "/", "Home")}
+        ${nav("register", "/register", "Register")}
+        ${nav("gallery", "/gallery", "Gallery")}
+        ${nav("shorts", "/shorts", "Shorts")}
+      </nav>
+    </div>
   </header>
   <main class="site-main">
     ${opts.body}
