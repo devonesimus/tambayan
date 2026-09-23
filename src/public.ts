@@ -3,6 +3,7 @@ import {
   eventAnnouncementBody,
   eventAnnouncementTitle,
   eventVenue,
+  formatEventHeadline,
   formatEventWhen,
   getHomeEvent,
   getOpenEvent,
@@ -29,55 +30,71 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   const title = event ? eventAnnouncementTitle(event) : "OFW Tambayan SG";
   const bodyText = event
     ? eventAnnouncementBody(event) ||
-      "Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore."
-    : "Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore.";
+      "Every last Sunday — fellowship, worship & community with fellow OFWs in Singapore."
+    : "Every last Sunday — fellowship, worship & community with fellow OFWs in Singapore.";
   const when = event ? formatEventWhen(event.held_at) : "Every last Sunday, 2–4 PM";
+  const headline = event ? formatEventHeadline(event.held_at) : "EVERY LAST SUNDAY · 2–4 PM";
   const where = event ? eventVenue(event, env) : env.DEFAULT_LOCATION;
 
-  const cta =
-    regState === "open"
-      ? `<a class="btn btn-primary" href="/register">Register</a>`
-      : `<a class="btn btn-primary" href="/register">Registration status</a>`;
+  let ctaLabel = "Coming soon";
+  let ctaHref: string | null = null;
+  if (regState === "open") {
+    ctaLabel = "Register";
+    ctaHref = "/register";
+  } else if (regState === "closed" || (event && event.status !== "draft")) {
+    ctaLabel = "Registration closed";
+    ctaHref = "/register";
+  } else if (!event || event.status === "draft") {
+    ctaLabel = "Coming soon";
+    ctaHref = null;
+  }
 
-  const statusLine = event
-    ? regState === "open"
-      ? "Open for registration"
-      : event.status === "draft"
-        ? "Coming soon"
-        : "Registration closed"
-    : null;
+  const cta = ctaHref
+    ? `<a class="btn btn-hero" href="${ctaHref}">${escapeHtml(ctaLabel)}</a>`
+    : `<span class="btn btn-hero is-disabled" aria-disabled="true">${escapeHtml(ctaLabel)}</span>`;
 
-  const latest = await renderLatestSection(env);
+  const photos = await renderPhotoRow(env);
+  const hashtags = renderHashtagStrip();
 
   const bodyHtml = `
-    <section class="hero">
+    <section class="home-hero" aria-labelledby="hero-date">
       <img
-        class="hero-logo"
-        src="/brand/ofwt-logo-blue.png"
-        alt="OFW Tambayan Singapore — Your Home Away From Home"
-        width="280"
-        height="161"
+        class="hero-plane"
+        src="/brand/airplane-red.svg"
+        alt=""
+        width="56"
+        height="40"
         decoding="async"
+        aria-hidden="true"
       />
-      <h1 class="hero-headline">${escapeHtml(title)}</h1>
-      <p class="lede">${escapeHtml(bodyText)}</p>
-      <ul class="event-details">
-        <li><span class="event-label">When</span> ${escapeHtml(when)}</li>
-        <li><span class="event-label">Where</span> ${escapeHtml(where)}</li>
-        ${statusLine ? `<li><span class="event-label">Status</span> ${escapeHtml(statusLine)}</li>` : ""}
-      </ul>
-      <div class="cta-row">
-        ${cta}
-      </div>
-      <div class="hero-secondary">
-        <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
-        <span class="share-sep" aria-hidden="true">·</span>
-        <a class="share-link" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(base)}" target="_blank" rel="noopener noreferrer">Share</a>
-        <span class="share-sep" aria-hidden="true">·</span>
-        <a class="share-link" href="https://wa.me/?text=${encodeURIComponent(`Join us at OFW Tambayan SG — ${when} ${base}`)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+      <div class="home-hero-inner">
+        <div class="home-hero-brand">
+          <img
+            class="hero-logo"
+            src="/brand/ofwt-logo-white.png"
+            alt="OFW Tambayan Singapore — Your Home Away From Home"
+            width="420"
+            height="242"
+            decoding="async"
+          />
+        </div>
+        <div class="home-hero-panel">
+          <h1 id="hero-date" class="hero-date">${escapeHtml(headline)}</h1>
+          <p class="hero-line">Every last Sunday — fellowship, worship &amp; community</p>
+          <p class="hero-venue">${escapeHtml(where)}</p>
+          <div class="hero-cta">${cta}</div>
+          <div class="hero-secondary">
+            <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
+            <span class="share-sep" aria-hidden="true">·</span>
+            <a class="share-link" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(base)}" target="_blank" rel="noopener noreferrer">Share</a>
+            <span class="share-sep" aria-hidden="true">·</span>
+            <a class="share-link" href="https://wa.me/?text=${encodeURIComponent(`Join us at OFW Tambayan SG — ${when} ${base}`)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          </div>
+        </div>
       </div>
     </section>
-    ${latest}`;
+    ${hashtags}
+    ${photos}`;
 
   return html(
     layout({
@@ -99,67 +116,80 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   );
 }
 
-async function renderLatestSection(env: Env): Promise<string> {
-  const latestVideo = await env.DB.prepare(
-    `SELECT * FROM videos ORDER BY sort_order ASC, published_at DESC LIMIT 1`,
-  ).first<VideoRow>();
+function renderHashtagStrip(): string {
+  const items = [
+    { tag: "#KKB", script: "Kamusta ka ba?" },
+    { tag: "#SKL", script: "Share Ko Lang" },
+    { tag: "#SML", script: "Share Mo Lang" },
+  ];
+  return `
+    <section class="hashtag-strip" aria-label="What to expect">
+      <div class="hashtag-strip-inner">
+        ${items
+          .map(
+            (item) => `<div class="hashtag-card">
+          <p class="hashtag-tag">${escapeHtml(item.tag)}</p>
+          <p class="hashtag-script">${escapeHtml(item.script)}</p>
+        </div>`,
+          )
+          .join("")}
+      </div>
+    </section>`;
+}
 
+async function renderPhotoRow(env: Env): Promise<string> {
   const latestGallery = await env.DB.prepare(
-    `SELECT e.*,
-      (SELECT COUNT(*) FROM gallery_images g WHERE g.event_id = e.id) AS photo_count
+    `SELECT e.*
      FROM events e
      WHERE e.status != 'draft'
        AND EXISTS (SELECT 1 FROM gallery_images g WHERE g.event_id = e.id)
      ORDER BY e.held_at DESC
      LIMIT 1`,
-  ).first<EventRow & { photo_count: number }>();
-
-  const previousEvent = await env.DB.prepare(
-    `SELECT * FROM events
-     WHERE status != 'draft'
-       AND datetime(held_at) < datetime('now')
-     ORDER BY held_at DESC
-     LIMIT 1`,
   ).first<EventRow>();
 
-  const items: string[] = [];
+  if (!latestGallery) return "";
 
-  if (latestVideo) {
-    items.push(`<li>
-      <a href="/shorts">
-        <span class="latest-label">Short</span>
-        <span class="latest-title">${escapeHtml(latestVideo.title)}</span>
-      </a>
-    </li>`);
-  }
+  const images = await env.DB.prepare(
+    `SELECT * FROM gallery_images
+     WHERE event_id = ?
+     ORDER BY sort_order ASC, created_at ASC
+     LIMIT 6`,
+  )
+    .bind(latestGallery.id)
+    .all<GalleryImageRow>();
 
-  if (latestGallery) {
-    items.push(`<li>
-      <a href="/gallery/${escapeHtml(latestGallery.slug)}">
-        <span class="latest-label">Gallery</span>
-        <span class="latest-title">${escapeHtml(latestGallery.title)}</span>
-        <span class="latest-meta">${latestGallery.photo_count} photos · ${escapeHtml(formatEventWhen(latestGallery.held_at))}</span>
-      </a>
-    </li>`);
-  } else if (previousEvent) {
-    items.push(`<li>
-      <a href="/gallery/${escapeHtml(previousEvent.slug)}">
-        <span class="latest-label">Previous</span>
-        <span class="latest-title">${escapeHtml(previousEvent.title)}</span>
-        <span class="latest-meta">${escapeHtml(formatEventWhen(previousEvent.held_at))}</span>
-      </a>
-    </li>`);
-  }
+  if (images.results.length === 0) return "";
 
-  // Hide the section when there is nothing real to show (no seed noise / filler cards).
-  if (items.length === 0) return "";
+  const latestVideo = await env.DB.prepare(
+    `SELECT * FROM videos ORDER BY sort_order ASC, published_at DESC LIMIT 1`,
+  ).first<VideoRow>();
+
+  const figures = images.results
+    .map(
+      (img) => `<a class="photo-row-item" href="/gallery/${escapeHtml(latestGallery.slug)}">
+        <img
+          src="/api/media/${encodeURIComponent(img.r2_key)}"
+          alt="${escapeHtml(img.caption || latestGallery.title)}"
+          loading="lazy"
+          decoding="async"
+        />
+      </a>`,
+    )
+    .join("");
+
+  const shortLink = latestVideo
+    ? `<p class="photo-row-short"><a href="/shorts">Latest Short · ${escapeHtml(latestVideo.title)}</a></p>`
+    : "";
 
   return `
-    <section class="latest" aria-labelledby="latest-heading">
-      <h2 id="latest-heading">Latest</h2>
-      <ul class="latest-list">
-        ${items.join("")}
-      </ul>
+    <section class="photo-row" aria-labelledby="photo-row-heading">
+      <div class="photo-row-inner">
+        <h2 id="photo-row-heading" class="photo-row-heading">From the gallery</h2>
+        <div class="photo-row-grid">
+          ${figures}
+        </div>
+        ${shortLink}
+      </div>
     </section>`;
 }
 

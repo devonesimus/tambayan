@@ -29,6 +29,8 @@ export function layout(opts: {
     image: `${base}/og-default.svg`,
     type: "website",
   };
+  const isHome = opts.active === "home";
+  const logoSrc = isHome ? "/brand/ofwt-logo-white.png" : "/brand/ofwt-logo-blue.png";
   const nav = (id: typeof opts.active, href: string, label: string) =>
     `<a href="${href}" class="${opts.active === id ? "is-active" : ""}">${label}</a>`;
 
@@ -52,17 +54,17 @@ export function layout(opts: {
   <meta name="twitter:image" content="${escapeHtml(og.image || `${base}/og-default.svg`)}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@400;500;600;700&family=Open+Sans:ital@1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Kalam:wght@700&family=League+Gothic&family=Montserrat:wght@400;500;600;700&family=Open+Sans:ital@1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
   ${opts.extraHead || ""}
 </head>
-<body>
+<body class="${isHome ? "page-home" : ""}">
   <div class="page-bg" aria-hidden="true"></div>
-  <header class="site-header">
+  <header class="site-header${isHome ? " site-header-home" : ""}">
     <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
       <img
         class="brand-logo"
-        src="/brand/ofwt-logo-blue.png"
+        src="${logoSrc}"
         alt="OFW Tambayan Singapore — Your Home Away From Home"
         width="160"
         height="92"
@@ -80,8 +82,8 @@ export function layout(opts: {
     ${opts.body}
   </main>
   <footer class="site-footer">
-    <p>Every last Sunday · 2–4 PM · Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186</p>
-    <p>
+    <p class="footer-tagline">Your Home Away From Home</p>
+    <p class="footer-links">
       <a href="${escapeHtml(opts.env.FACEBOOK_URL)}" rel="noopener noreferrer" target="_blank">Facebook</a>
       ·
       <a href="/privacy">Privacy</a>
