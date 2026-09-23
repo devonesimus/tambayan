@@ -52,21 +52,24 @@ export function layout(opts: {
   <meta name="twitter:image" content="${escapeHtml(og.image || `${base}/og-default.svg`)}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@400;500;600;700&family=Open+Sans:ital@1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
   ${opts.extraHead || ""}
 </head>
 <body>
   <div class="page-bg" aria-hidden="true"></div>
   <header class="site-header">
-    <a class="brand" href="/">
-      <span class="brand-mark">OT</span>
-      <span class="brand-text">
-        <strong>OFW Tambayan</strong>
-        <small>Singapore</small>
-      </span>
+    <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
+      <img
+        class="brand-logo"
+        src="/brand/logo-lockup-on-light.png"
+        alt="OFW Tambayan Singapore — Your Home Away From Home"
+        width="180"
+        height="85"
+        decoding="async"
+      />
     </a>
-    <nav class="nav">
+    <nav class="nav" aria-label="Primary">
       ${nav("home", "/", "Home")}
       ${nav("register", "/register", "Register")}
       ${nav("gallery", "/gallery", "Gallery")}
@@ -90,11 +93,13 @@ export function layout(opts: {
 </html>`;
 }
 
-export function shareButtons(shareUrl: string, shareText: string): string {
+export function shareButtons(shareUrl: string, shareText: string, quiet = false): string {
   const fb = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
   const wa = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`;
-  return `<div class="share-row" role="group" aria-label="Share">
-    <a class="share-btn share-fb" href="${fb}" target="_blank" rel="noopener noreferrer">Share on Facebook</a>
-    <a class="share-btn share-wa" href="${wa}" target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
+  const cls = quiet ? "share-row share-row-quiet" : "share-row";
+  return `<div class="${cls}" role="group" aria-label="Share">
+    <a class="share-link" href="${fb}" target="_blank" rel="noopener noreferrer">Share on Facebook</a>
+    <span class="share-sep" aria-hidden="true">·</span>
+    <a class="share-link" href="${wa}" target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
   </div>`;
 }

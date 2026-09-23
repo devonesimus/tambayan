@@ -36,37 +36,46 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
 
   const cta =
     regState === "open"
-      ? `<a class="btn btn-primary" href="/register">Register for this gathering</a>`
+      ? `<a class="btn btn-primary" href="/register">Register</a>`
       : `<a class="btn btn-primary" href="/register">Registration status</a>`;
+
+  const statusLine = event
+    ? regState === "open"
+      ? "Open for registration"
+      : event.status === "draft"
+        ? "Coming soon"
+        : "Registration closed"
+    : null;
 
   const latest = await renderLatestSection(env);
 
   const bodyHtml = `
     <section class="hero">
-      <p class="eyebrow">OFW Tambayan · Singapore</p>
-      <h1 class="brand-hero">OFW Tambayan</h1>
-      <p class="hero-kicker">${escapeHtml(title)}</p>
+      <img
+        class="hero-logo"
+        src="/brand/logo-lockup-on-light.png"
+        alt="OFW Tambayan Singapore — Your Home Away From Home"
+        width="320"
+        height="151"
+        decoding="async"
+      />
+      <h1 class="hero-headline">${escapeHtml(title)}</h1>
       <p class="lede">${escapeHtml(bodyText)}</p>
-      <dl class="event-meta">
-        <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
-        <div><dt>Where</dt><dd>${escapeHtml(where)}</dd></div>
-        ${
-          event
-            ? `<div><dt>Status</dt><dd>${
-                regState === "open"
-                  ? "Open for registration"
-                  : event.status === "draft"
-                    ? "Coming soon"
-                    : "Registration closed"
-              }</dd></div>`
-            : ""
-        }
-      </dl>
+      <ul class="event-details">
+        <li><span class="event-label">When</span> ${escapeHtml(when)}</li>
+        <li><span class="event-label">Where</span> ${escapeHtml(where)}</li>
+        ${statusLine ? `<li><span class="event-label">Status</span> ${escapeHtml(statusLine)}</li>` : ""}
+      </ul>
       <div class="cta-row">
         ${cta}
-        <a class="btn btn-ghost" href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>
       </div>
-      ${shareButtons(base, `Join us at OFW Tambayan SG — ${when}`)}
+      <div class="hero-secondary">
+        <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
+        <span class="share-sep" aria-hidden="true">·</span>
+        <a class="share-link" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(base)}" target="_blank" rel="noopener noreferrer">Share</a>
+        <span class="share-sep" aria-hidden="true">·</span>
+        <a class="share-link" href="https://wa.me/?text=${encodeURIComponent(`Join us at OFW Tambayan SG — ${when} ${base}`)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+      </div>
     </section>
     ${latest}`;
 
@@ -116,41 +125,41 @@ async function renderLatestSection(env: Env): Promise<string> {
   const items: string[] = [];
 
   if (latestVideo) {
-    const thumb = youtubeThumb(latestVideo.youtube_url);
-    items.push(`<a class="latest-item" href="/shorts">
-      <span class="latest-label">Latest short</span>
-      <strong>${escapeHtml(latestVideo.title)}</strong>
-      ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />` : ""}
-    </a>`);
+    items.push(`<li>
+      <a href="/shorts">
+        <span class="latest-label">Short</span>
+        <span class="latest-title">${escapeHtml(latestVideo.title)}</span>
+      </a>
+    </li>`);
   }
 
   if (latestGallery) {
-    items.push(`<a class="latest-item" href="/gallery/${escapeHtml(latestGallery.slug)}">
-      <span class="latest-label">Latest gallery</span>
-      <strong>${escapeHtml(latestGallery.title)}</strong>
-      <span class="latest-meta">${latestGallery.photo_count} photos · ${escapeHtml(formatEventWhen(latestGallery.held_at))}</span>
-    </a>`);
+    items.push(`<li>
+      <a href="/gallery/${escapeHtml(latestGallery.slug)}">
+        <span class="latest-label">Gallery</span>
+        <span class="latest-title">${escapeHtml(latestGallery.title)}</span>
+        <span class="latest-meta">${latestGallery.photo_count} photos · ${escapeHtml(formatEventWhen(latestGallery.held_at))}</span>
+      </a>
+    </li>`);
   } else if (previousEvent) {
-    items.push(`<a class="latest-item" href="/gallery/${escapeHtml(previousEvent.slug)}">
-      <span class="latest-label">Previous gathering</span>
-      <strong>${escapeHtml(previousEvent.title)}</strong>
-      <span class="latest-meta">${escapeHtml(formatEventWhen(previousEvent.held_at))}</span>
-    </a>`);
+    items.push(`<li>
+      <a href="/gallery/${escapeHtml(previousEvent.slug)}">
+        <span class="latest-label">Previous</span>
+        <span class="latest-title">${escapeHtml(previousEvent.title)}</span>
+        <span class="latest-meta">${escapeHtml(formatEventWhen(previousEvent.held_at))}</span>
+      </a>
+    </li>`);
   }
 
-  items.push(`<a class="latest-item" href="/gallery">
-    <span class="latest-label">Galleries</span>
-    <strong>All event photos</strong>
-    <span class="latest-meta">Browse past gatherings</span>
-  </a>`);
+  // Hide the section when there is nothing real to show (no seed noise / filler cards).
+  if (items.length === 0) return "";
 
   return `
     <section class="latest" aria-labelledby="latest-heading">
       <h2 id="latest-heading">Latest</h2>
-      <p class="lede">Catch up on recent shorts and photos — no carousel, just the newest links.</p>
-      <div class="latest-row">
+      <ul class="latest-list">
         ${items.join("")}
-      </div>
+      </ul>
     </section>`;
 }
 
