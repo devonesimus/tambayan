@@ -1,0 +1,41 @@
+{
+  "name": "ofw-tambayan",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "SITE_NAME": "OFW Tambayan SG",
+    "SITE_URL": "https://tambayan.fsdac.app",
+    "FACEBOOK_URL": "https://www.facebook.com/p/OFW-Tambayan-SG-61571932246535/",
+    "DEFAULT_LOCATION": "Level 1 Auditorium, 798 Thomson Road"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tambayan-db",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "GALLERY",
+      "bucket_name": "tambayan-gallery",
+      "preview_bucket_name": "tambayan-gallery"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "tambayan.fsdac.app/*",
+      "zone_name": "fsdac.app"
+    }
+  ]
+}
