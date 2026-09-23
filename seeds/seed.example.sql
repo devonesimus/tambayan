@@ -28,10 +28,6 @@ INSERT OR IGNORE INTO events (
 -- INSERT OR REPLACE INTO admin_users (email, password_hash)
 -- VALUES ('admin@fsdac.app', 'PASSWORD_HASH_HERE');
 
-INSERT OR IGNORE INTO videos (id, title, youtube_url, sort_order)
-VALUES (
-  'vid-demo-001',
-  'Welcome to OFW Tambayan',
-  'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-  0
-);
+-- Optional: add real YouTube Shorts via Admin → Videos (no demo placeholder video).
+-- INSERT OR IGNORE INTO videos (id, title, youtube_url, sort_order)
+-- VALUES ('vid-demo-001', 'Welcome to OFW Tambayan', 'https://www.youtube.com/shorts/…', 0);

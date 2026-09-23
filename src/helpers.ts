@@ -195,6 +195,33 @@ export function formatEventWhen(iso: string): string {
   }).format(d);
 }
 
+/** Compact hero headline, e.g. `SUN · 27 SEP · 2–4 PM` (SGT). */
+export function formatEventHeadline(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const parts = new Intl.DateTimeFormat("en-SG", {
+    timeZone: "Asia/Singapore",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value || "";
+  const weekday = get("weekday").toUpperCase().slice(0, 3);
+  const day = get("day");
+  // Force 3-letter month (en-SG may yield "Sept").
+  const month = get("month").toUpperCase().replace(/\./g, "").slice(0, 3);
+  // Gatherings are the brand window 2–4 PM; show that when start is in the afternoon slot.
+  const hour = Number(get("hour"));
+  const dayPeriod = get("dayPeriod").toUpperCase();
+  const timeWindow =
+    dayPeriod === "PM" && hour >= 1 && hour <= 3 ? "2–4 PM" : `${hour}${dayPeriod ? ` ${dayPeriod}` : ""}`;
+  return `${weekday} · ${day} ${month} · ${timeWindow}`;
+}
+
 export function normalizeMobile(raw: string): string | null {
   const cleaned = raw.replace(/[\s\-()]/g, "");
   if (!/^\+?[0-9]{8,15}$/.test(cleaned)) return null;
