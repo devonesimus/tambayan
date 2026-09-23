@@ -67,7 +67,7 @@ Cloudflare resources are provisioned for this account:
 
 - D1 `tambayan-db` (id in `wrangler.jsonc`)
 - R2 `tambayan-gallery`
-- Worker route pattern `tambayan.fsdac.app/*` (zone `fsdac.app`) — DNS CNAME may still need Adrian if the token lacks Zone DNS write
+- Worker custom domain / route for `tambayan.fsdac.app` — **DNS still needs Adrian** if the API token lacks Zone DNS write (hostname may not resolve until a proxied record exists, same as Gospel Weekend setup)
 
 Then:
 
