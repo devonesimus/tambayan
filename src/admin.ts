@@ -11,7 +11,6 @@ import {
   getSettings,
   html,
   json,
-  siteBase,
   youtubeId,
   type EventRow,
   type RegistrationRow,
