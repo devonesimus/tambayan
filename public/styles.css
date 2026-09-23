@@ -68,7 +68,7 @@ a:hover { color: var(--accent); }
   --nav-size: 0.9rem;
   /* Solid fallbacks (no backdrop-filter / reduced-motion) */
   --header-bg: rgba(248, 249, 251, 0.97);
-  --header-border: rgba(39, 52, 107, 0.1);
+  --header-border: rgba(39, 52, 107, 0.14);
   --header-blur: 14px;
 
   width: 100%;
