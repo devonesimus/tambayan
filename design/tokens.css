@@ -1,0 +1,26 @@
+/* OFW Tambayan SG — design tokens (from Canva DAG-MAUycaM). See tokens.json for usage notes. */
+@import url("https://fonts.googleapis.com/css2?family=Anton&family=League+Gothic&family=Montserrat:wght@400;700&family=Open+Sans:ital,wght@1,400&display=swap");
+
+:root {
+  /* Brand palette (page 3) */
+  --ofw-navy: #27346B;
+  --ofw-orange: #EAA12F;
+  --ofw-red: #D33444;
+  --ofw-offwhite: #F5F4F4;
+  --ofw-black: #0B0B0B;
+
+  /* Light-variant colors (pages 4–8) */
+  --ofw-royal-blue: #20419C;
+  --ofw-yellow: #F9D21D;
+  --ofw-stroke-red: #CE2029;
+
+  /* Surfaces */
+  --ofw-panel: rgba(255, 255, 255, 0.14);
+
+  /* Type */
+  --font-display: "League Gothic", "Oswald", Impact, sans-serif; /* OFW, hashtags */
+  --font-heading: "Anton", Impact, sans-serif;                   /* SG badge, event headings */
+  --font-body: "Montserrat", system-ui, sans-serif;              /* event details */
+  --font-tagline: "Open Sans", system-ui, sans-serif;            /* italic tagline */
+  --tracking-display: 0.07em;
+}

@@ -1,0 +1,508 @@
+import {
+  escapeHtml,
+  eventAnnouncementBody,
+  eventAnnouncementTitle,
+  eventVenue,
+  formatEventWhen,
+  getHomeEvent,
+  getOpenEvent,
+  html,
+  isValidOptionalEmail,
+  json,
+  normalizeMobile,
+  publicRegistrationState,
+  siteBase,
+  youtubeEmbedUrl,
+  youtubeThumb,
+  type EventRow,
+  type GalleryImageRow,
+  type VideoRow,
+} from "./helpers";
+import { layout, shareButtons } from "./layout";
+
+export async function renderHome(request: Request, env: Env): Promise<Response> {
+  const event = await getHomeEvent(env.DB);
+  const openEvent = await getOpenEvent(env.DB);
+  const regState = publicRegistrationState(openEvent);
+  const base = siteBase(env, request);
+
+  const title = event ? eventAnnouncementTitle(event) : "OFW Tambayan SG";
+  const bodyText = event
+    ? eventAnnouncementBody(event) ||
+      "Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore."
+    : "Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore.";
+  const when = event ? formatEventWhen(event.held_at) : "Every last Sunday, 2–4 PM";
+  const where = event ? eventVenue(event, env) : env.DEFAULT_LOCATION;
+
+  const cta =
+    regState === "open"
+      ? `<a class="btn btn-primary" href="/register">Register for this gathering</a>`
+      : `<a class="btn btn-primary" href="/register">Registration status</a>`;
+
+  const latest = await renderLatestSection(env);
+
+  const bodyHtml = `
+    <section class="hero">
+      <p class="eyebrow">OFW Tambayan · Singapore</p>
+      <h1 class="brand-hero">OFW Tambayan</h1>
+      <p class="hero-kicker">${escapeHtml(title)}</p>
+      <p class="lede">${escapeHtml(bodyText)}</p>
+      <dl class="event-meta">
+        <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
+        <div><dt>Where</dt><dd>${escapeHtml(where)}</dd></div>
+        ${
+          event
+            ? `<div><dt>Status</dt><dd>${
+                regState === "open"
+                  ? "Open for registration"
+                  : event.status === "draft"
+                    ? "Coming soon"
+                    : "Registration closed"
+              }</dd></div>`
+            : ""
+        }
+      </dl>
+      <div class="cta-row">
+        ${cta}
+        <a class="btn btn-ghost" href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>
+      </div>
+      ${shareButtons(base, `Join us at OFW Tambayan SG — ${when}`)}
+    </section>
+    ${latest}`;
+
+  return html(
+    layout({
+      env,
+      request,
+      title: `${title} · OFW Tambayan SG`,
+      description: bodyText.slice(0, 160),
+      active: "home",
+      og: {
+        title,
+        description: bodyText.slice(0, 200),
+        url: base,
+        image: event?.cover_image_key
+          ? `${base}/api/media/${encodeURIComponent(event.cover_image_key)}`
+          : `${base}/og-default.svg`,
+      },
+      body: bodyHtml,
+    }),
+  );
+}
+
+async function renderLatestSection(env: Env): Promise<string> {
+  const latestVideo = await env.DB.prepare(
+    `SELECT * FROM videos ORDER BY sort_order ASC, published_at DESC LIMIT 1`,
+  ).first<VideoRow>();
+
+  const latestGallery = await env.DB.prepare(
+    `SELECT e.*,
+      (SELECT COUNT(*) FROM gallery_images g WHERE g.event_id = e.id) AS photo_count
+     FROM events e
+     WHERE e.status != 'draft'
+       AND EXISTS (SELECT 1 FROM gallery_images g WHERE g.event_id = e.id)
+     ORDER BY e.held_at DESC
+     LIMIT 1`,
+  ).first<EventRow & { photo_count: number }>();
+
+  const previousEvent = await env.DB.prepare(
+    `SELECT * FROM events
+     WHERE status != 'draft'
+       AND datetime(held_at) < datetime('now')
+     ORDER BY held_at DESC
+     LIMIT 1`,
+  ).first<EventRow>();
+
+  const items: string[] = [];
+
+  if (latestVideo) {
+    const thumb = youtubeThumb(latestVideo.youtube_url);
+    items.push(`<a class="latest-item" href="/shorts">
+      <span class="latest-label">Latest short</span>
+      <strong>${escapeHtml(latestVideo.title)}</strong>
+      ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />` : ""}
+    </a>`);
+  }
+
+  if (latestGallery) {
+    items.push(`<a class="latest-item" href="/gallery/${escapeHtml(latestGallery.slug)}">
+      <span class="latest-label">Latest gallery</span>
+      <strong>${escapeHtml(latestGallery.title)}</strong>
+      <span class="latest-meta">${latestGallery.photo_count} photos · ${escapeHtml(formatEventWhen(latestGallery.held_at))}</span>
+    </a>`);
+  } else if (previousEvent) {
+    items.push(`<a class="latest-item" href="/gallery/${escapeHtml(previousEvent.slug)}">
+      <span class="latest-label">Previous gathering</span>
+      <strong>${escapeHtml(previousEvent.title)}</strong>
+      <span class="latest-meta">${escapeHtml(formatEventWhen(previousEvent.held_at))}</span>
+    </a>`);
+  }
+
+  items.push(`<a class="latest-item" href="/gallery">
+    <span class="latest-label">Galleries</span>
+    <strong>All event photos</strong>
+    <span class="latest-meta">Browse past gatherings</span>
+  </a>`);
+
+  return `
+    <section class="latest" aria-labelledby="latest-heading">
+      <h2 id="latest-heading">Latest</h2>
+      <p class="lede">Catch up on recent shorts and photos — no carousel, just the newest links.</p>
+      <div class="latest-row">
+        ${items.join("")}
+      </div>
+    </section>`;
+}
+
+export async function renderRegister(request: Request, env: Env): Promise<Response> {
+  const openEvent = await getOpenEvent(env.DB);
+  const state = publicRegistrationState(openEvent);
+
+  let closedNotice = "";
+  if (state !== "open") {
+    const recent = await env.DB.prepare(
+      `SELECT * FROM events
+       WHERE status IN ('open', 'closed')
+       ORDER BY held_at DESC
+       LIMIT 1`,
+    ).first<EventRow>();
+    const when = recent ? formatEventWhen(recent.held_at) : null;
+    closedNotice = `
+      <div class="notice notice-closed">
+        <p><strong>Registration is closed.</strong></p>
+        <p>${
+          when
+            ? `The most recent gathering was ${escapeHtml(when)}. `
+            : ""
+        }Public sign-up opens when organizers publish the next OFW Tambayan event.</p>
+        <p>Follow us on <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a> for updates.</p>
+      </div>`;
+  }
+
+  const when = openEvent ? formatEventWhen(openEvent.held_at) : "";
+  const where = openEvent ? eventVenue(openEvent, env) : "";
+
+  const body = `
+    <section class="narrow">
+      <h1>Register</h1>
+      ${
+        state === "open" && openEvent
+          ? `<p class="lede">Sign up for ${escapeHtml(openEvent.title)} · ${escapeHtml(when)}</p>
+      <p class="venue-line">${escapeHtml(where)}</p>
+      <form id="register-form" class="form" method="post" action="/api/register" novalidate>
+        <label>
+          <span>Name <em>required</em></span>
+          <input name="name" type="text" autocomplete="name" required maxlength="120" />
+        </label>
+        <label>
+          <span>Email <em>optional</em></span>
+          <input name="email" type="email" autocomplete="email" maxlength="200" />
+        </label>
+        <label>
+          <span>Mobile <em>required</em></span>
+          <input name="mobile" type="tel" autocomplete="tel" required placeholder="+65…" maxlength="20" />
+        </label>
+        <label class="check">
+          <input name="privacy" type="checkbox" value="1" required />
+          <span>I agree to the <a href="/privacy" target="_blank">Privacy Policy</a></span>
+        </label>
+        <button class="btn btn-primary" type="submit">Submit registration</button>
+        <p id="register-status" class="form-status" role="status" aria-live="polite"></p>
+      </form>
+      <script src="/register.js" defer></script>`
+          : closedNotice
+      }
+    </section>`;
+
+  return html(
+    layout({
+      env,
+      request,
+      title: "Register · OFW Tambayan SG",
+      active: "register",
+      description:
+        state === "open" && openEvent
+          ? `Register for ${openEvent.title} — ${when}`
+          : "Registration is currently closed for OFW Tambayan SG.",
+      og: {
+        title: "Register for OFW Tambayan SG",
+        description:
+          state === "open" && openEvent
+            ? `Join us ${when} at ${where}.`
+            : "Registration opens with the next OFW Tambayan gathering.",
+        url: `${siteBase(env, request)}/register`,
+      },
+      body,
+    }),
+  );
+}
+
+export async function handleRegisterApi(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  const event = await getOpenEvent(env.DB);
+  if (!event) {
+    return json({ error: "Registration is closed. No open event is accepting sign-ups." }, 400);
+  }
+
+  let name = "";
+  let email = "";
+  let mobile = "";
+  let privacy = false;
+
+  const ctype = request.headers.get("content-type") || "";
+  if (ctype.includes("application/json")) {
+    const body = (await request.json()) as Record<string, unknown>;
+    name = String(body.name || "").trim();
+    email = String(body.email || "").trim();
+    mobile = String(body.mobile || "").trim();
+    privacy = Boolean(body.privacy);
+  } else {
+    const form = await request.formData();
+    name = String(form.get("name") || "").trim();
+    email = String(form.get("email") || "").trim();
+    mobile = String(form.get("mobile") || "").trim();
+    privacy = form.get("privacy") === "1" || form.get("privacy") === "on" || form.get("privacy") === "true";
+  }
+
+  if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
+  if (!isValidOptionalEmail(email)) return json({ error: "Email looks invalid." }, 400);
+  const mobileNorm = normalizeMobile(mobile);
+  if (!mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
+  if (!privacy) return json({ error: "Please accept the Privacy Policy." }, 400);
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'public', ?)`,
+  )
+    .bind(id, event.id, name, email || null, mobileNorm, now, now)
+    .run();
+
+  return json({ ok: true, id, event: { id: event.id, title: event.title } });
+}
+
+export async function renderPrivacy(request: Request, env: Env): Promise<Response> {
+  const body = `
+    <section class="narrow prose">
+      <h1>Privacy Policy</h1>
+      <p>OFW Tambayan SG collects the information you provide on the registration form so we can plan seating, follow up about the gathering, and keep you informed about upcoming fellowship nights.</p>
+      <h2>What we collect</h2>
+      <ul>
+        <li>Name (required)</li>
+        <li>Mobile number (required)</li>
+        <li>Email address (optional)</li>
+        <li>The time you accepted this policy</li>
+      </ul>
+      <h2>How we use it</h2>
+      <p>Registration details are stored in our Cloudflare D1 database and are visible only to seeded site admins. We do not sell your data. We may contact you about the event you registered for or related OFW Tambayan gatherings.</p>
+      <h2>Retention</h2>
+      <p>We keep registrations for operational needs across monthly events. Contact an organizer via our <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook page</a> if you want your details removed.</p>
+      <h2>Contact</h2>
+      <p>Questions about privacy: message <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">OFW Tambayan SG on Facebook</a>.</p>
+    </section>`;
+
+  return html(
+    layout({
+      env,
+      request,
+      title: "Privacy Policy · OFW Tambayan SG",
+      active: "privacy",
+      body,
+      og: {
+        title: "Privacy Policy · OFW Tambayan SG",
+        description: "How OFW Tambayan SG handles registration data.",
+        url: `${siteBase(env, request)}/privacy`,
+      },
+    }),
+  );
+}
+
+export async function renderGalleryIndex(request: Request, env: Env): Promise<Response> {
+  const events = await env.DB.prepare(
+    `SELECT e.*,
+      (SELECT COUNT(*) FROM gallery_images g WHERE g.event_id = e.id) AS photo_count
+     FROM events e
+     WHERE e.status != 'draft'
+     ORDER BY e.held_at DESC`,
+  ).all<EventRow & { photo_count: number }>();
+
+  const cards =
+    events.results.length === 0
+      ? `<p class="notice">Photo galleries will appear here after each gathering.</p>`
+      : `<ul class="gallery-list">
+        ${events.results
+          .map(
+            (e) => `<li>
+            <a href="/gallery/${escapeHtml(e.slug)}">
+              <strong>${escapeHtml(e.title)}</strong>
+              <span>${escapeHtml(formatEventWhen(e.held_at))} · ${e.photo_count} photos</span>
+            </a>
+          </li>`,
+          )
+          .join("")}
+      </ul>`;
+
+  const body = `
+    <section class="narrow">
+      <h1>Gallery</h1>
+      <p class="lede">Moments from past OFW Tambayan gatherings.</p>
+      ${cards}
+    </section>`;
+
+  return html(
+    layout({
+      env,
+      request,
+      title: "Gallery · OFW Tambayan SG",
+      active: "gallery",
+      body,
+      og: {
+        title: "OFW Tambayan Gallery",
+        description: "Photos from OFW Tambayan SG gatherings.",
+        url: `${siteBase(env, request)}/gallery`,
+      },
+    }),
+  );
+}
+
+export async function renderGalleryEvent(
+  request: Request,
+  env: Env,
+  slug: string,
+): Promise<Response> {
+  const event = await env.DB.prepare("SELECT * FROM events WHERE slug = ?")
+    .bind(slug)
+    .first<EventRow>();
+  if (!event || event.status === "draft") {
+    return html(layout({ env, request, title: "Not found", body: "<h1>Gallery not found</h1>" }), 404);
+  }
+
+  const images = await env.DB.prepare(
+    `SELECT * FROM gallery_images WHERE event_id = ? ORDER BY sort_order ASC, created_at ASC`,
+  )
+    .bind(event.id)
+    .all<GalleryImageRow>();
+
+  const base = siteBase(env, request);
+  const grid =
+    images.results.length === 0
+      ? `<p class="notice">Photos for this event are coming soon.</p>`
+      : `<div class="photo-grid">
+        ${images.results
+          .map(
+            (img) => `<figure>
+            <a href="/api/media/${encodeURIComponent(img.r2_key)}" target="_blank" rel="noopener">
+              <img src="/api/media/${encodeURIComponent(img.r2_key)}" alt="${escapeHtml(img.caption || event.title)}" loading="lazy" />
+            </a>
+            ${img.caption ? `<figcaption>${escapeHtml(img.caption)}</figcaption>` : ""}
+          </figure>`,
+          )
+          .join("")}
+      </div>`;
+
+  const shareUrl = `${base}/gallery/${event.slug}`;
+  const cover = event.cover_image_key
+    ? `${base}/api/media/${encodeURIComponent(event.cover_image_key)}`
+    : images.results[0]
+      ? `${base}/api/media/${encodeURIComponent(images.results[0].r2_key)}`
+      : `${base}/og-default.svg`;
+
+  const body = `
+    <section>
+      <p class="eyebrow"><a href="/gallery">← All galleries</a></p>
+      <h1>${escapeHtml(event.title)}</h1>
+      <p class="lede">${escapeHtml(formatEventWhen(event.held_at))}</p>
+      ${shareButtons(shareUrl, `Photos from ${event.title}`)}
+      ${grid}
+    </section>`;
+
+  return html(
+    layout({
+      env,
+      request,
+      title: `${event.title} · Gallery`,
+      active: "gallery",
+      body,
+      og: {
+        title: event.title,
+        description: `Photos from ${event.title} — OFW Tambayan SG`,
+        url: shareUrl,
+        image: cover,
+      },
+    }),
+  );
+}
+
+export async function renderShorts(request: Request, env: Env): Promise<Response> {
+  const videos = await env.DB.prepare(
+    `SELECT * FROM videos ORDER BY sort_order ASC, published_at DESC`,
+  ).all<VideoRow>();
+  const base = siteBase(env, request);
+  const first = videos.results[0];
+  const firstEmbed = first ? youtubeEmbedUrl(first.youtube_url) : null;
+
+  const player = firstEmbed
+    ? `<div class="player-shell">
+        <iframe id="shorts-player" title="${escapeHtml(first.title)}" src="${escapeHtml(firstEmbed)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+      </div>
+      <h2 id="shorts-title" class="player-title">${escapeHtml(first.title)}</h2>`
+    : `<p class="notice">Short videos will appear here soon.</p>`;
+
+  const list =
+    videos.results.length === 0
+      ? ""
+      : `<ul class="video-list" id="video-list">
+        ${videos.results
+          .map((v, i) => {
+            const embed = youtubeEmbedUrl(v.youtube_url);
+            const thumb = youtubeThumb(v.youtube_url);
+            return `<li>
+              <button type="button" class="video-item ${i === 0 ? "is-active" : ""}" data-embed="${escapeHtml(embed || "")}" data-title="${escapeHtml(v.title)}">
+                ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" />` : ""}
+                <span>${escapeHtml(v.title)}</span>
+              </button>
+            </li>`;
+          })
+          .join("")}
+      </ul>
+      <script src="/shorts.js" defer></script>`;
+
+  const body = `
+    <section class="shorts">
+      <h1>Shorts</h1>
+      <p class="lede">Moments from OFW Tambayan — watch and share.</p>
+      ${shareButtons(`${base}/shorts`, "Watch OFW Tambayan Shorts")}
+      ${player}
+      ${list}
+    </section>`;
+
+  const ogImage = first ? youtubeThumb(first.youtube_url) || `${base}/og-default.svg` : `${base}/og-default.svg`;
+
+  return html(
+    layout({
+      env,
+      request,
+      title: "Shorts · OFW Tambayan SG",
+      active: "shorts",
+      body,
+      og: {
+        title: "OFW Tambayan Shorts",
+        description: "Short videos from OFW Tambayan SG fellowship.",
+        url: `${base}/shorts`,
+        image: ogImage,
+      },
+    }),
+  );
+}
+
+export async function serveMedia(env: Env, key: string): Promise<Response> {
+  const object = await env.GALLERY.get(key);
+  if (!object) return new Response("Not found", { status: 404 });
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+  headers.set("cache-control", "public, max-age=86400");
+  return new Response(object.body, { headers });
+}
