@@ -166,6 +166,8 @@ dist
 !.env.example
 .wrangler/
 
-# Local admin seed (may contain password hashes)
+# Local admin seed (may contain password hashes / plaintext)
 seeds/seed.local.sql
 seeds/seed.sql
+seeds/seed.prod.local.sql
+seeds/prod-admin-passwords.txt
