@@ -30,6 +30,8 @@ export function layout(opts: {
     type: "website",
   };
   const isHome = opts.active === "home";
+  const pageClass = opts.active ? `page-${opts.active}` : "";
+  const bodyClass = [isHome ? "page-home" : "page-light", pageClass].filter(Boolean).join(" ");
   const logoSrc = isHome ? "/brand/ofwt-logo-white.png" : "/brand/ofwt-logo-blue.png";
   const nav = (id: typeof opts.active, href: string, label: string) =>
     `<a href="${href}" class="${opts.active === id ? "is-active" : ""}">${label}</a>`;
@@ -58,9 +60,9 @@ export function layout(opts: {
   <link rel="stylesheet" href="/styles.css" />
   ${opts.extraHead || ""}
 </head>
-<body class="${isHome ? "page-home" : ""}">
+<body class="${bodyClass}">
   <div class="page-bg" aria-hidden="true"></div>
-  <header class="site-header${isHome ? " site-header-home" : ""}">
+  <header class="site-header${isHome ? " site-header-home" : " site-header-light"}">
     <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
       <img
         class="brand-logo"

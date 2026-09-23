@@ -197,7 +197,7 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
   const openEvent = await getOpenEvent(env.DB);
   const state = publicRegistrationState(openEvent);
 
-  let closedNotice = "";
+  let statusPanel = "";
   if (state !== "open") {
     const recent = await env.DB.prepare(
       `SELECT * FROM events
@@ -206,29 +206,34 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
        LIMIT 1`,
     ).first<EventRow>();
     const when = recent ? formatEventWhen(recent.held_at) : null;
-    closedNotice = `
-      <div class="notice notice-closed">
-        <p><strong>Registration is closed.</strong></p>
-        <p>${
-          when
-            ? `The most recent gathering was ${escapeHtml(when)}. `
-            : ""
-        }Public sign-up opens when organizers publish the next OFW Tambayan event.</p>
-        <p>Follow us on <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a> for updates.</p>
+    const isComingSoon = state === "none";
+    const heading = isComingSoon ? "Coming soon" : "Registration closed";
+    const detail = isComingSoon
+      ? "Public sign-up opens when organizers publish the next OFW Tambayan gathering."
+      : `${when ? `The most recent gathering was ${escapeHtml(when)}. ` : ""}Sign-up opens again with the next published event.`;
+    statusPanel = `
+      <div class="status-panel ${isComingSoon ? "status-panel-soon" : "status-panel-closed"}" role="status">
+        <p class="status-panel-kicker">${escapeHtml(heading)}</p>
+        <p class="status-panel-body">${detail}</p>
+        <p class="status-panel-follow">
+          Follow us on
+          <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
+          for updates.
+        </p>
       </div>`;
   }
 
   const when = openEvent ? formatEventWhen(openEvent.held_at) : "";
   const where = openEvent ? eventVenue(openEvent, env) : "";
 
-  const body = `
-    <section class="narrow">
-      <h1>Register</h1>
-      ${
-        state === "open" && openEvent
-          ? `<p class="lede">Sign up for ${escapeHtml(openEvent.title)} · ${escapeHtml(when)}</p>
-      <p class="venue-line">${escapeHtml(where)}</p>
-      <form id="register-form" class="form" method="post" action="/api/register" novalidate>
+  const formBlock =
+    state === "open" && openEvent
+      ? `<div class="page-meta">
+        <p class="page-meta-primary">${escapeHtml(openEvent.title)}</p>
+        <p class="page-meta-secondary">${escapeHtml(when)}</p>
+        <p class="page-meta-venue">${escapeHtml(where)}</p>
+      </div>
+      <form id="register-form" class="form form-register" method="post" action="/api/register" novalidate>
         <label>
           <span>Name <em>required</em></span>
           <input name="name" type="text" autocomplete="name" required maxlength="120" />
@@ -245,12 +250,23 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
           <input name="privacy" type="checkbox" value="1" required />
           <span>I agree to the <a href="/privacy" target="_blank">Privacy Policy</a></span>
         </label>
-        <button class="btn btn-primary" type="submit">Submit registration</button>
+        <button class="btn btn-cta" type="submit">Submit registration</button>
         <p id="register-status" class="form-status" role="status" aria-live="polite"></p>
       </form>
       <script src="/register.js" defer></script>`
-          : closedNotice
-      }
+      : statusPanel;
+
+  const body = `
+    <section class="page-section register-page">
+      <header class="page-intro">
+        <h1>Register</h1>
+        <p class="lede">${
+          state === "open"
+            ? "Sign up for the next fellowship gathering."
+            : "Registration opens with each published gathering."
+        }</p>
+      </header>
+      ${formBlock}
     </section>`;
 
   return html(
@@ -262,7 +278,9 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
       description:
         state === "open" && openEvent
           ? `Register for ${openEvent.title} — ${when}`
-          : "Registration is currently closed for OFW Tambayan SG.",
+          : state === "none"
+            ? "Registration opens soon for OFW Tambayan SG."
+            : "Registration is currently closed for OFW Tambayan SG.",
       og: {
         title: "Register for OFW Tambayan SG",
         description:
@@ -324,8 +342,10 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
 
 export async function renderPrivacy(request: Request, env: Env): Promise<Response> {
   const body = `
-    <section class="narrow prose">
-      <h1>Privacy Policy</h1>
+    <section class="page-section narrow prose">
+      <header class="page-intro">
+        <h1>Privacy Policy</h1>
+      </header>
       <p>OFW Tambayan SG collects the information you provide on the registration form so we can plan seating, follow up about the gathering, and keep you informed about upcoming fellowship nights.</p>
       <h2>What we collect</h2>
       <ul>
@@ -369,24 +389,31 @@ export async function renderGalleryIndex(request: Request, env: Env): Promise<Re
 
   const cards =
     events.results.length === 0
-      ? `<p class="notice">Photo galleries will appear here after each gathering.</p>`
+      ? `<div class="empty-state" role="status">
+          <p class="empty-state-title">No galleries yet</p>
+          <p class="empty-state-body">Photos will appear here after each gathering.</p>
+        </div>`
       : `<ul class="gallery-list">
         ${events.results
-          .map(
-            (e) => `<li>
-            <a href="/gallery/${escapeHtml(e.slug)}">
-              <strong>${escapeHtml(e.title)}</strong>
-              <span>${escapeHtml(formatEventWhen(e.held_at))} · ${e.photo_count} photos</span>
+          .map((e) => {
+            const count = Number(e.photo_count) || 0;
+            const countLabel = count === 1 ? "1 photo" : `${count} photos`;
+            return `<li>
+            <a class="gallery-list-link" href="/gallery/${escapeHtml(e.slug)}">
+              <span class="gallery-list-title">${escapeHtml(e.title)}</span>
+              <span class="gallery-list-meta">${escapeHtml(formatEventWhen(e.held_at))} · ${escapeHtml(countLabel)}</span>
             </a>
-          </li>`,
-          )
+          </li>`;
+          })
           .join("")}
       </ul>`;
 
   const body = `
-    <section class="narrow">
-      <h1>Gallery</h1>
-      <p class="lede">Moments from past OFW Tambayan gatherings.</p>
+    <section class="page-section gallery-page">
+      <header class="page-intro">
+        <h1>Gallery</h1>
+        <p class="lede">Moments from past OFW Tambayan gatherings.</p>
+      </header>
       ${cards}
     </section>`;
 
@@ -415,7 +442,16 @@ export async function renderGalleryEvent(
     .bind(slug)
     .first<EventRow>();
   if (!event || event.status === "draft") {
-    return html(layout({ env, request, title: "Not found", body: "<h1>Gallery not found</h1>" }), 404);
+    return html(
+      layout({
+        env,
+        request,
+        title: "Not found",
+        active: "gallery",
+        body: `<section class="page-section"><header class="page-intro"><h1>Gallery not found</h1><p class="lede">That gathering isn’t in the public gallery.</p></header><p class="page-back"><a href="/gallery">All galleries</a></p></section>`,
+      }),
+      404,
+    );
   }
 
   const images = await env.DB.prepare(
@@ -427,13 +463,16 @@ export async function renderGalleryEvent(
   const base = siteBase(env, request);
   const grid =
     images.results.length === 0
-      ? `<p class="notice">Photos for this event are coming soon.</p>`
+      ? `<div class="empty-state" role="status">
+          <p class="empty-state-title">Photos coming soon</p>
+          <p class="empty-state-body">This gathering’s gallery is not published yet.</p>
+        </div>`
       : `<div class="photo-grid">
         ${images.results
           .map(
-            (img) => `<figure>
+            (img) => `<figure class="photo-grid-item">
             <a href="/api/media/${encodeURIComponent(img.r2_key)}" target="_blank" rel="noopener">
-              <img src="/api/media/${encodeURIComponent(img.r2_key)}" alt="${escapeHtml(img.caption || event.title)}" loading="lazy" />
+              <img src="/api/media/${encodeURIComponent(img.r2_key)}" alt="${escapeHtml(img.caption || event.title)}" loading="lazy" decoding="async" />
             </a>
             ${img.caption ? `<figcaption>${escapeHtml(img.caption)}</figcaption>` : ""}
           </figure>`,
@@ -449,11 +488,13 @@ export async function renderGalleryEvent(
       : `${base}/og-default.svg`;
 
   const body = `
-    <section>
-      <p class="eyebrow"><a href="/gallery">← All galleries</a></p>
-      <h1>${escapeHtml(event.title)}</h1>
-      <p class="lede">${escapeHtml(formatEventWhen(event.held_at))}</p>
-      ${shareButtons(shareUrl, `Photos from ${event.title}`)}
+    <section class="page-section gallery-detail">
+      <p class="page-back"><a href="/gallery">All galleries</a></p>
+      <header class="page-intro">
+        <h1>${escapeHtml(event.title)}</h1>
+        <p class="lede">${escapeHtml(formatEventWhen(event.held_at))}</p>
+      </header>
+      ${shareButtons(shareUrl, `Photos from ${event.title}`, true)}
       ${grid}
     </section>`;
 
@@ -483,11 +524,16 @@ export async function renderShorts(request: Request, env: Env): Promise<Response
   const firstEmbed = first ? youtubeEmbedUrl(first.youtube_url) : null;
 
   const player = firstEmbed
-    ? `<div class="player-shell">
-        <iframe id="shorts-player" title="${escapeHtml(first.title)}" src="${escapeHtml(firstEmbed)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      </div>
-      <h2 id="shorts-title" class="player-title">${escapeHtml(first.title)}</h2>`
-    : `<p class="notice">Short videos will appear here soon.</p>`;
+    ? `<div class="shorts-stage">
+        <div class="player-shell">
+          <iframe id="shorts-player" title="${escapeHtml(first.title)}" src="${escapeHtml(firstEmbed)}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+        </div>
+        <h2 id="shorts-title" class="player-title">${escapeHtml(first.title)}</h2>
+      </div>`
+    : `<div class="empty-state" role="status">
+        <p class="empty-state-title">Shorts coming soon</p>
+        <p class="empty-state-body">Short videos from fellowship will appear here.</p>
+      </div>`;
 
   const list =
     videos.results.length === 0
@@ -499,8 +545,8 @@ export async function renderShorts(request: Request, env: Env): Promise<Response
             const thumb = youtubeThumb(v.youtube_url);
             return `<li>
               <button type="button" class="video-item ${i === 0 ? "is-active" : ""}" data-embed="${escapeHtml(embed || "")}" data-title="${escapeHtml(v.title)}">
-                ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" />` : ""}
-                <span>${escapeHtml(v.title)}</span>
+                ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" width="72" height="72" loading="lazy" decoding="async" />` : `<span class="video-item-fallback" aria-hidden="true"></span>`}
+                <span class="video-item-title">${escapeHtml(v.title)}</span>
               </button>
             </li>`;
           })
@@ -509,10 +555,12 @@ export async function renderShorts(request: Request, env: Env): Promise<Response
       <script src="/shorts.js" defer></script>`;
 
   const body = `
-    <section class="shorts">
-      <h1>Shorts</h1>
-      <p class="lede">Moments from OFW Tambayan — watch and share.</p>
-      ${shareButtons(`${base}/shorts`, "Watch OFW Tambayan Shorts")}
+    <section class="page-section shorts-page">
+      <header class="page-intro">
+        <h1>Shorts</h1>
+        <p class="lede">Moments from OFW Tambayan — watch and share.</p>
+      </header>
+      ${shareButtons(`${base}/shorts`, "Watch OFW Tambayan Shorts", true)}
       ${player}
       ${list}
     </section>`;
