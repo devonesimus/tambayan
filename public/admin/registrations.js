@@ -8,6 +8,8 @@
   const next = document.getElementById("next-page");
   const exportXlsx = document.getElementById("export-xlsx");
   const exportPdf = document.getElementById("export-pdf");
+  const adminForm = document.getElementById("admin-reg-form");
+  const adminStatus = document.getElementById("admin-reg-status");
 
   let page = 1;
   const pageSize = 25;
@@ -26,7 +28,7 @@
     const res = await fetch(`/api/admin/registrations?${params}`);
     const data = await res.json();
     if (!res.ok) {
-      tbody.innerHTML = `<tr><td colspan="5">${data.error || "Failed to load"}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6">${data.error || "Failed to load"}</td></tr>`;
       return;
     }
     total = data.total;
@@ -39,11 +41,12 @@
           <td>${escape(r.email || "")}</td>
           <td>${escape(r.mobile)}</td>
           <td>${escape(r.event_title || "")}</td>
+          <td>${escape(r.source || "public")}</td>
           <td>${escape(r.created_at)}</td>
         </tr>`,
           )
           .join("")
-      : `<tr><td colspan="5">No registrations found.</td></tr>`;
+      : `<tr><td colspan="6">No registrations found.</td></tr>`;
     const pages = Math.max(1, Math.ceil(total / pageSize));
     if (pageInfo) pageInfo.textContent = `Page ${page} of ${pages} · ${total} total`;
   }
@@ -88,6 +91,7 @@
         Email: r.email || "",
         Mobile: r.mobile,
         Event: r.event_title,
+        Source: r.source || "public",
         Registered: r.created_at,
       })),
     );
@@ -104,10 +108,47 @@
     doc.text("OFW Tambayan — Registrations", 14, 16);
     doc.autoTable({
       startY: 22,
-      head: [["Name", "Email", "Mobile", "Event", "Registered"]],
-      body: all.map((r) => [r.name, r.email || "", r.mobile, r.event_title, r.created_at]),
+      head: [["Name", "Email", "Mobile", "Event", "Source", "Registered"]],
+      body: all.map((r) => [
+        r.name,
+        r.email || "",
+        r.mobile,
+        r.event_title,
+        r.source || "public",
+        r.created_at,
+      ]),
     });
     doc.save("ofw-tambayan-registrations.pdf");
+  });
+
+  adminForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!adminStatus) return;
+    adminStatus.classList.remove("is-error");
+    adminStatus.textContent = "Saving…";
+    const fd = new FormData(adminForm);
+    try {
+      const res = await fetch("/api/admin/registrations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          event_id: fd.get("event_id"),
+          name: fd.get("name"),
+          email: fd.get("email"),
+          mobile: fd.get("mobile"),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not add registration");
+      adminStatus.textContent = "Guest added.";
+      adminForm.reset();
+      if (eventFilter && fd.get("event_id")) eventFilter.value = String(fd.get("event_id"));
+      page = 1;
+      load();
+    } catch (err) {
+      adminStatus.classList.add("is-error");
+      adminStatus.textContent = err instanceof Error ? err.message : "Error";
+    }
   });
 
   let timer;

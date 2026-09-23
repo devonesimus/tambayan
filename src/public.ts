@@ -1,12 +1,16 @@
 import {
   escapeHtml,
+  eventAnnouncementBody,
+  eventAnnouncementTitle,
+  eventVenue,
   formatEventWhen,
-  getNextEvent,
-  getSettings,
+  getHomeEvent,
+  getOpenEvent,
   html,
   isValidOptionalEmail,
   json,
   normalizeMobile,
+  publicRegistrationState,
   siteBase,
   youtubeEmbedUrl,
   youtubeThumb,
@@ -16,49 +20,66 @@ import {
 } from "./helpers";
 import { layout, shareButtons } from "./layout";
 
-async function locationLine(env: Env): Promise<string> {
-  const settings = await getSettings(env.DB);
-  return settings.location_override || env.DEFAULT_LOCATION;
-}
-
 export async function renderHome(request: Request, env: Env): Promise<Response> {
-  const settings = await getSettings(env.DB);
-  const event = await getNextEvent(env.DB);
+  const event = await getHomeEvent(env.DB);
+  const openEvent = await getOpenEvent(env.DB);
+  const regState = publicRegistrationState(openEvent);
   const base = siteBase(env, request);
-  const location = await locationLine(env);
+
+  const title = event ? eventAnnouncementTitle(event) : "OFW Tambayan SG";
+  const bodyText = event
+    ? eventAnnouncementBody(event) ||
+      "Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore."
+    : "Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore.";
   const when = event ? formatEventWhen(event.held_at) : "Every last Sunday, 2–4 PM";
-  const title = settings.announcement_title || "OFW Tambayan SG";
+  const where = event ? eventVenue(event, env) : env.DEFAULT_LOCATION;
+
+  const cta =
+    regState === "open"
+      ? `<a class="btn btn-primary" href="/register">Register for this gathering</a>`
+      : `<a class="btn btn-primary" href="/register">Registration status</a>`;
+
+  const latest = await renderLatestSection(env);
+
   const bodyHtml = `
     <section class="hero">
-      <p class="eyebrow">Fellowship · Singapore</p>
-      <h1>${escapeHtml(title)}</h1>
-      <p class="lede">${escapeHtml(settings.announcement_body)}</p>
+      <p class="eyebrow">OFW Tambayan · Singapore</p>
+      <h1 class="brand-hero">OFW Tambayan</h1>
+      <p class="hero-kicker">${escapeHtml(title)}</p>
+      <p class="lede">${escapeHtml(bodyText)}</p>
       <dl class="event-meta">
         <div><dt>When</dt><dd>${escapeHtml(when)}</dd></div>
-        <div><dt>Where</dt><dd>${escapeHtml(location)}</dd></div>
-        ${event ? `<div><dt>Event</dt><dd>${escapeHtml(event.title)}</dd></div>` : ""}
+        <div><dt>Where</dt><dd>${escapeHtml(where)}</dd></div>
+        ${
+          event
+            ? `<div><dt>Status</dt><dd>${
+                regState === "open"
+                  ? "Open for registration"
+                  : event.status === "draft"
+                    ? "Coming soon"
+                    : "Registration closed"
+              }</dd></div>`
+            : ""
+        }
       </dl>
       <div class="cta-row">
-        <a class="btn btn-primary" href="/register">Register for the next gathering</a>
+        ${cta}
         <a class="btn btn-ghost" href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>
       </div>
       ${shareButtons(base, `Join us at OFW Tambayan SG — ${when}`)}
     </section>
-    <section class="band">
-      <h2>What to expect</h2>
-      <p>Warm fellowship with fellow OFWs, worship, and space to belong. Come as you are — bring a friend.</p>
-    </section>`;
+    ${latest}`;
 
   return html(
     layout({
       env,
       request,
       title: `${title} · OFW Tambayan SG`,
-      description: settings.announcement_body.slice(0, 160),
+      description: bodyText.slice(0, 160),
       active: "home",
       og: {
         title,
-        description: settings.announcement_body.slice(0, 200),
+        description: bodyText.slice(0, 200),
         url: base,
         image: event?.cover_image_key
           ? `${base}/api/media/${encodeURIComponent(event.cover_image_key)}`
@@ -69,16 +90,106 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   );
 }
 
+async function renderLatestSection(env: Env): Promise<string> {
+  const latestVideo = await env.DB.prepare(
+    `SELECT * FROM videos ORDER BY sort_order ASC, published_at DESC LIMIT 1`,
+  ).first<VideoRow>();
+
+  const latestGallery = await env.DB.prepare(
+    `SELECT e.*,
+      (SELECT COUNT(*) FROM gallery_images g WHERE g.event_id = e.id) AS photo_count
+     FROM events e
+     WHERE e.status != 'draft'
+       AND EXISTS (SELECT 1 FROM gallery_images g WHERE g.event_id = e.id)
+     ORDER BY e.held_at DESC
+     LIMIT 1`,
+  ).first<EventRow & { photo_count: number }>();
+
+  const previousEvent = await env.DB.prepare(
+    `SELECT * FROM events
+     WHERE status != 'draft'
+       AND datetime(held_at) < datetime('now')
+     ORDER BY held_at DESC
+     LIMIT 1`,
+  ).first<EventRow>();
+
+  const items: string[] = [];
+
+  if (latestVideo) {
+    const thumb = youtubeThumb(latestVideo.youtube_url);
+    items.push(`<a class="latest-item" href="/shorts">
+      <span class="latest-label">Latest short</span>
+      <strong>${escapeHtml(latestVideo.title)}</strong>
+      ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />` : ""}
+    </a>`);
+  }
+
+  if (latestGallery) {
+    items.push(`<a class="latest-item" href="/gallery/${escapeHtml(latestGallery.slug)}">
+      <span class="latest-label">Latest gallery</span>
+      <strong>${escapeHtml(latestGallery.title)}</strong>
+      <span class="latest-meta">${latestGallery.photo_count} photos · ${escapeHtml(formatEventWhen(latestGallery.held_at))}</span>
+    </a>`);
+  } else if (previousEvent) {
+    items.push(`<a class="latest-item" href="/gallery/${escapeHtml(previousEvent.slug)}">
+      <span class="latest-label">Previous gathering</span>
+      <strong>${escapeHtml(previousEvent.title)}</strong>
+      <span class="latest-meta">${escapeHtml(formatEventWhen(previousEvent.held_at))}</span>
+    </a>`);
+  }
+
+  items.push(`<a class="latest-item" href="/gallery">
+    <span class="latest-label">Galleries</span>
+    <strong>All event photos</strong>
+    <span class="latest-meta">Browse past gatherings</span>
+  </a>`);
+
+  return `
+    <section class="latest" aria-labelledby="latest-heading">
+      <h2 id="latest-heading">Latest</h2>
+      <p class="lede">Catch up on recent shorts and photos — no carousel, just the newest links.</p>
+      <div class="latest-row">
+        ${items.join("")}
+      </div>
+    </section>`;
+}
+
 export async function renderRegister(request: Request, env: Env): Promise<Response> {
-  const event = await getNextEvent(env.DB);
-  const when = event ? formatEventWhen(event.held_at) : "the next OFW Tambayan";
+  const openEvent = await getOpenEvent(env.DB);
+  const state = publicRegistrationState(openEvent);
+
+  let closedNotice = "";
+  if (state !== "open") {
+    const recent = await env.DB.prepare(
+      `SELECT * FROM events
+       WHERE status IN ('open', 'closed')
+       ORDER BY held_at DESC
+       LIMIT 1`,
+    ).first<EventRow>();
+    const when = recent ? formatEventWhen(recent.held_at) : null;
+    closedNotice = `
+      <div class="notice notice-closed">
+        <p><strong>Registration is closed.</strong></p>
+        <p>${
+          when
+            ? `The most recent gathering was ${escapeHtml(when)}. `
+            : ""
+        }Public sign-up opens when organizers publish the next OFW Tambayan event.</p>
+        <p>Follow us on <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a> for updates.</p>
+      </div>`;
+  }
+
+  const when = openEvent ? formatEventWhen(openEvent.held_at) : "";
+  const where = openEvent ? eventVenue(openEvent, env) : "";
+
   const body = `
     <section class="narrow">
       <h1>Register</h1>
-      <p class="lede">Sign up for ${escapeHtml(event?.title || "the next gathering")} · ${escapeHtml(when)}</p>
       ${
-        event
-          ? `<form id="register-form" class="form" method="post" action="/api/register" novalidate>
+        state === "open" && openEvent
+          ? `<p class="lede">Sign up for ${escapeHtml(openEvent.title)} · ${escapeHtml(when)}</p>
+      <p class="venue-line">${escapeHtml(where)}</p>
+      <form id="register-form" class="form" method="post" action="/api/register" novalidate>
         <label>
           <span>Name <em>required</em></span>
           <input name="name" type="text" autocomplete="name" required maxlength="120" />
@@ -99,7 +210,7 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
         <p id="register-status" class="form-status" role="status" aria-live="polite"></p>
       </form>
       <script src="/register.js" defer></script>`
-          : `<p class="notice">Registration opens when the next event is announced. Check back soon, or follow us on <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>.</p>`
+          : closedNotice
       }
     </section>`;
 
@@ -109,10 +220,16 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
       request,
       title: "Register · OFW Tambayan SG",
       active: "register",
-      description: `Register for OFW Tambayan — ${when}`,
+      description:
+        state === "open" && openEvent
+          ? `Register for ${openEvent.title} — ${when}`
+          : "Registration is currently closed for OFW Tambayan SG.",
       og: {
         title: "Register for OFW Tambayan SG",
-        description: `Join us ${when} at Level 1 Auditorium, 798 Thomson Road.`,
+        description:
+          state === "open" && openEvent
+            ? `Join us ${when} at ${where}.`
+            : "Registration opens with the next OFW Tambayan gathering.",
         url: `${siteBase(env, request)}/register`,
       },
       body,
@@ -123,8 +240,10 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
 export async function handleRegisterApi(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const event = await getNextEvent(env.DB);
-  if (!event) return json({ error: "No upcoming event is open for registration." }, 400);
+  const event = await getOpenEvent(env.DB);
+  if (!event) {
+    return json({ error: "Registration is closed. No open event is accepting sign-ups." }, 400);
+  }
 
   let name = "";
   let email = "";
@@ -155,8 +274,8 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.prepare(
-    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'public', ?)`,
   )
     .bind(id, event.id, name, email || null, mobileNorm, now, now)
     .run();
@@ -205,6 +324,7 @@ export async function renderGalleryIndex(request: Request, env: Env): Promise<Re
     `SELECT e.*,
       (SELECT COUNT(*) FROM gallery_images g WHERE g.event_id = e.id) AS photo_count
      FROM events e
+     WHERE e.status != 'draft'
      ORDER BY e.held_at DESC`,
   ).all<EventRow & { photo_count: number }>();
 
@@ -255,7 +375,9 @@ export async function renderGalleryEvent(
   const event = await env.DB.prepare("SELECT * FROM events WHERE slug = ?")
     .bind(slug)
     .first<EventRow>();
-  if (!event) return html(layout({ env, request, title: "Not found", body: "<h1>Gallery not found</h1>" }), 404);
+  if (!event || event.status === "draft") {
+    return html(layout({ env, request, title: "Not found", body: "<h1>Gallery not found</h1>" }), 404);
+  }
 
   const images = await env.DB.prepare(
     `SELECT * FROM gallery_images WHERE event_id = ? ORDER BY sort_order ASC, created_at ASC`,

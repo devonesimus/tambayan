@@ -2,7 +2,7 @@
 
 Fellowship site for **OFW Tambayan Singapore** — announcement, registration, gallery, and YouTube shorts — on a Cloudflare Worker at [tambayan.fsdac.app](https://tambayan.fsdac.app).
 
-Every last Sunday, **2–4 PM**, Level 1 Auditorium, **798 Thomson Road**.  
+Every last Sunday, **2–4 PM**, **Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186**.  
 Facebook: [OFW Tambayan SG](https://www.facebook.com/p/OFW-Tambayan-SG-61571932246535/)
 
 ## Stack
@@ -10,8 +10,8 @@ Facebook: [OFW Tambayan SG](https://www.facebook.com/p/OFW-Tambayan-SG-615719322
 | Piece | Role |
 | --- | --- |
 | Cloudflare Worker + `public/` assets | HTML routes, APIs, static CSS/JS (`wrangler` `assets.directory`) |
-| D1 | Events, announcement, registrations, admins, gallery metadata, videos |
-| R2 | Gallery images |
+| D1 (`tambayan-db`) | Events (status/venue/announcement), registrations, admins, gallery metadata, videos |
+| R2 (`tambayan-gallery`) | Gallery images |
 | YouTube embeds | Shorts player (no Cloudflare Stream in v1) |
 
 Patterns adapted from Gospel Weekend in [pinoy-rag-agent](https://github.com/devonesimus/pinoy-rag-agent) (auth, registrations UI, privacy, wrangler/CI). RAG / Messenger / Vectorize / Workers AI are intentionally **not** included.
@@ -48,33 +48,40 @@ npm run dev
 
 Useful paths:
 
-- `/` — announcement + CTA
-- `/register` — Name (required), Email (optional), Mobile, privacy checkbox
+- `/` — open-event hero + static Latest row (no carousel)
+- `/register` — open only when an event is `open` and not past `held_at`; otherwise closed state
 - `/privacy`
-- `/gallery`, `/gallery/:eventSlug`
+- `/gallery`, `/gallery/:eventSlug` — non-draft events
 - `/shorts`
 - `/admin/login` — seeded admins only
+- `/admin/events` — create/edit, force close/reopen (one public `open` at a time)
+- `/admin/registrations` — list/export + add guest for any event (incl. closed)
+
+### Registration close rule
+
+**Both:** public registration soft-closes after `held_at`, and admins can force close or reopen via event status (`draft` | `open` | `closed`).
 
 ## Deploy (production)
 
-1. Create Cloudflare resources (one-time):
-   - D1 database named `tambayan-db` → put the real `database_id` in `wrangler.jsonc`
-   - R2 bucket `tambayan-gallery`
-   - Custom domain / route `tambayan.fsdac.app/*` on zone `fsdac.app` (DNS CNAME / Worker route)
-2. Set Worker secret: `wrangler secret put SESSION_SECRET`
-3. Apply migrations: `npm run db:migrate:remote`
-4. Seed admins remotely with a private SQL file (never commit hashes you care about):  
-   `wrangler d1 execute tambayan-db --remote --file=./seeds/seed.local.sql`
-5. Deploy: `npm run deploy`  
-   Or push to `main` — GitHub Action `.github/workflows/deploy.yml` runs `wrangler deploy` using secrets:
+Cloudflare resources are provisioned for this account:
+
+- D1 `tambayan-db` (id in `wrangler.jsonc`)
+- R2 `tambayan-gallery`
+- Worker route pattern `tambayan.fsdac.app/*` (zone `fsdac.app`) — DNS CNAME may still need Adrian if the token lacks Zone DNS write
+
+Then:
+
+1. `wrangler secret put SESSION_SECRET` (from `.dev.vars` locally)
+2. `npm run db:migrate:remote`
+3. Seed admins: `wrangler d1 execute tambayan-db --remote --file=./seeds/seed.local.sql`
+4. `npm run deploy`  
+   Or push to `main` — GitHub Action `.github/workflows/deploy.yml` uses:
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
 
-Until DNS and the real D1 id/token are provisioned, local `wrangler dev` is the runnable path.
-
 ## Admin model
 
-A few seeded email/password admins (PBKDF2 hashes in D1). Cookie session is HMAC-signed with `SESSION_SECRET`, **8 hour** TTL. No invites, roles, or SSO in v1.
+A few seeded email/password admins (PBKDF2 hashes in D1). Cookie session is HMAC-signed with `SESSION_SECRET`, **8 hour** TTL. No invites, roles, or SSO in v1. Gallery uploads work as soon as an event exists (any status).
 
 ## Design
 

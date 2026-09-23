@@ -21,7 +21,7 @@ export function layout(opts: {
   const base = siteBase(opts.env, opts.request);
   const desc =
     opts.description ||
-    "OFW Tambayan SG — fellowship every last Sunday, 2–4 PM at Level 1 Auditorium, 798 Thomson Road.";
+    "OFW Tambayan SG — fellowship every last Sunday, 2–4 PM at Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186.";
   const og = opts.og || {
     title: opts.title,
     description: desc,
@@ -52,7 +52,7 @@ export function layout(opts: {
   <meta name="twitter:image" content="${escapeHtml(og.image || `${base}/og-default.svg`)}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=League+Gothic&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
   ${opts.extraHead || ""}
 </head>
@@ -77,7 +77,7 @@ export function layout(opts: {
     ${opts.body}
   </main>
   <footer class="site-footer">
-    <p>Every last Sunday · 2–4 PM · Level 1 Auditorium, 798 Thomson Road</p>
+    <p>Every last Sunday · 2–4 PM · Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186</p>
     <p>
       <a href="${escapeHtml(opts.env.FACEBOOK_URL)}" rel="noopener noreferrer" target="_blank">Facebook</a>
       ·

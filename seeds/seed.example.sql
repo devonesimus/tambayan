@@ -9,23 +9,19 @@
 -- Apply with:
 --   npm run db:seed:local
 
--- Example next event (last Sunday of a month)
-INSERT OR IGNORE INTO events (id, slug, title, held_at)
-VALUES (
+-- Demo open event (use a future held_at so public registration stays open)
+INSERT OR IGNORE INTO events (
+  id, slug, title, held_at, status, address, announcement_title, announcement_body
+) VALUES (
   'evt-demo-001',
-  '2026-03-29',
-  'OFW Tambayan — March 2026',
-  '2026-03-29T14:00:00+08:00'
+  '2026-09-27',
+  'OFW Tambayan — September 2026',
+  '2026-09-27T14:00:00+08:00',
+  'open',
+  'Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186',
+  'Join us this Sunday at OFW Tambayan',
+  'Every last Sunday, 2–4 PM. Come for fellowship, worship, and community with fellow OFWs in Singapore.'
 );
-
-UPDATE site_settings
-SET
-  next_event_id = 'evt-demo-001',
-  announcement_title = 'Join us this month at OFW Tambayan',
-  announcement_body = 'Every last Sunday, 2–4 PM at Level 1 Auditorium, 798 Thomson Road. Come for fellowship, worship, and community with fellow OFWs in Singapore.',
-  location_override = 'Level 1 Auditorium, 798 Thomson Road',
-  updated_at = datetime('now')
-WHERE id = 1;
 
 -- Replace PASSWORD_HASH_HERE with output from scripts/hash-password.mjs
 -- Default local password for demo: ChangeMeNow!

@@ -6,13 +6,20 @@ import {
   verifyPassword,
 } from "./admin-auth";
 import {
+  DEFAULT_VENUE,
+  enforceSingleOpen,
   escapeHtml,
   formatEventWhen,
-  getSettings,
+  getOpenEvent,
   html,
+  isPubliclyOpen,
+  isValidOptionalEmail,
   json,
+  normalizeMobile,
+  slugify,
   youtubeId,
   type EventRow,
+  type EventStatus,
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
@@ -27,7 +34,7 @@ function adminShell(
 ): string {
   const nav = [
     ["dashboard", "/admin", "Dashboard"],
-    ["announcement", "/admin/announcement", "Announcement"],
+    ["events", "/admin/events", "Events"],
     ["registrations", "/admin/registrations", "Registrations"],
     ["gallery", "/admin/gallery", "Gallery"],
     ["videos", "/admin/videos", "Videos"],
@@ -53,6 +60,14 @@ function adminShell(
   });
 }
 
+function statusBadge(event: EventRow): string {
+  const softClosed = event.status === "open" && !isPubliclyOpen(event);
+  const label = softClosed
+    ? "open (soft-closed)"
+    : event.status;
+  return `<span class="status-pill status-${escapeHtml(event.status)}${softClosed ? " is-soft-closed" : ""}">${escapeHtml(label)}</span>`;
+}
+
 export async function handleAdmin(request: Request, env: Env, path: string): Promise<Response> {
   if (path === "/admin/login") return handleLogin(request, env);
   const secureCookie = new URL(request.url).protocol === "https:";
@@ -67,7 +82,6 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     });
   }
 
-  // Local-only helper to generate password hashes for seed SQL
   if (path === "/api/admin/hash-password" && request.method === "POST") {
     const url = new URL(request.url);
     if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
@@ -86,14 +100,25 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   }
 
   if (path === "/admin" || path === "/admin/") return renderDashboard(request, env);
-  if (path === "/admin/announcement") return handleAnnouncement(request, env);
+  if (path === "/admin/events") return handleAdminEvents(request, env);
+  if (path === "/admin/announcement") {
+    return new Response(null, { status: 302, headers: { Location: "/admin/events" } });
+  }
   if (path === "/admin/registrations") return renderRegistrations(request, env);
   if (path === "/admin/gallery") return handleAdminGallery(request, env);
   if (path === "/admin/videos") return handleAdminVideos(request, env);
 
-  if (path === "/api/admin/registrations") return apiRegistrations(request, env);
-  if (path === "/api/admin/announcement" && request.method === "POST") {
-    return apiSaveAnnouncement(request, env);
+  if (path === "/api/admin/registrations" && request.method === "GET") {
+    return apiRegistrations(request, env);
+  }
+  if (path === "/api/admin/registrations" && request.method === "POST") {
+    return apiAdminCreateRegistration(request, env);
+  }
+  if (path === "/api/admin/events" && request.method === "POST") {
+    return apiUpsertEvent(request, env);
+  }
+  if (path === "/api/admin/events/status" && request.method === "POST") {
+    return apiSetEventStatus(request, env);
   }
   if (path === "/api/admin/gallery" && request.method === "POST") {
     return apiUploadGallery(request, env);
@@ -106,9 +131,6 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   }
   if (path === "/api/admin/videos" && request.method === "DELETE") {
     return apiDeleteVideo(request, env);
-  }
-  if (path === "/api/admin/events" && request.method === "POST") {
-    return apiCreateEvent(request, env);
   }
 
   return json({ error: "Not found" }, 404);
@@ -182,137 +204,192 @@ function loginForm(error?: string): string {
 }
 
 async function renderDashboard(request: Request, env: Env): Promise<Response> {
-  const settings = await getSettings(env.DB);
-  const event = settings.next_event_id
-    ? await env.DB.prepare("SELECT * FROM events WHERE id = ?")
-        .bind(settings.next_event_id)
-        .first<EventRow>()
-    : null;
-  const count = event
+  const open = await getOpenEvent(env.DB);
+  const count = open
     ? (
         await env.DB.prepare("SELECT COUNT(*) AS c FROM registrations WHERE event_id = ?")
-          .bind(event.id)
+          .bind(open.id)
           .first<{ c: number }>()
       )?.c || 0
     : 0;
+  const totalEvents =
+    (await env.DB.prepare(`SELECT COUNT(*) AS c FROM events`).first<{ c: number }>())?.c || 0;
 
   const body = `
     <h1>Dashboard</h1>
-    <p class="lede">Manage the next OFW Tambayan announcement, registrations, gallery, and shorts.</p>
+    <p class="lede">Events gate public registration. Admins can still add guests and upload gallery photos anytime an event exists.</p>
     <dl class="event-meta">
-      <div><dt>Next event</dt><dd>${event ? escapeHtml(event.title) : "Not set"}</dd></div>
-      <div><dt>When</dt><dd>${event ? escapeHtml(formatEventWhen(event.held_at)) : "—"}</dd></div>
+      <div><dt>Open for public</dt><dd>${open ? escapeHtml(open.title) : "None"}</dd></div>
+      <div><dt>When</dt><dd>${open ? escapeHtml(formatEventWhen(open.held_at)) : "—"}</dd></div>
       <div><dt>Registrations</dt><dd>${count}</dd></div>
+      <div><dt>Events</dt><dd>${totalEvents}</dd></div>
     </dl>
     <div class="cta-row">
-      <a class="btn btn-primary" href="/admin/announcement">Edit announcement</a>
+      <a class="btn btn-primary" href="/admin/events">Manage events</a>
       <a class="btn btn-ghost" href="/admin/registrations">View registrations</a>
     </div>`;
 
   return html(adminShell(env, request, "Dashboard", body, "dashboard"));
 }
 
-async function handleAnnouncement(request: Request, env: Env): Promise<Response> {
-  const settings = await getSettings(env.DB);
+async function handleAdminEvents(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const editId = url.searchParams.get("id") || "";
   const events = await env.DB.prepare("SELECT * FROM events ORDER BY held_at DESC").all<EventRow>();
+  const editing = editId
+    ? events.results.find((e) => e.id === editId) || null
+    : null;
 
+  const list =
+    events.results.length === 0
+      ? `<p class="notice">No events yet. Create the next OFW Tambayan below.</p>`
+      : `<ul class="admin-event-list">
+        ${events.results
+          .map((e) => {
+            const soft = e.status === "open" && !isPubliclyOpen(e);
+            return `<li>
+            <div>
+              <strong>${escapeHtml(e.title)}</strong>
+              ${statusBadge(e)}
+              <div class="latest-meta">${escapeHtml(formatEventWhen(e.held_at))} · ${escapeHtml(e.address)}</div>
+            </div>
+            <div class="toolbar-actions">
+              <a class="btn btn-ghost" href="/admin/events?id=${escapeHtml(e.id)}">Edit</a>
+              ${
+                e.status === "open"
+                  ? `<button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="closed">Force close</button>`
+                  : e.status === "closed"
+                    ? `<button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="open">Reopen</button>`
+                    : `<button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="open">Open</button>
+                       <button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="closed">Close</button>`
+              }
+            </div>
+          </li>`;
+          })
+          .join("")}
+      </ul>`;
+
+  const formTitle = editing ? "Edit event" : "Create event";
   const body = `
-    <h1>Announcement</h1>
-    <p class="lede">This copy appears on the home page and drives public registration.</p>
-    <form class="form" id="announcement-form">
-      <label>
-        <span>Title</span>
-        <input name="announcement_title" required maxlength="200" value="${escapeHtml(settings.announcement_title)}" />
-      </label>
-      <label>
-        <span>Body</span>
-        <textarea name="announcement_body" rows="5" required maxlength="2000">${escapeHtml(settings.announcement_body)}</textarea>
-      </label>
-      <label>
-        <span>Location override</span>
-        <input name="location_override" maxlength="200" value="${escapeHtml(settings.location_override || "")}" placeholder="${escapeHtml(env.DEFAULT_LOCATION)}" />
-      </label>
-      <label>
-        <span>Next event (registrations target)</span>
-        <select name="next_event_id">
-          <option value="">— none —</option>
-          ${events.results
+    <h1>Events</h1>
+    <p class="lede">One open event at a time for public registration. Soft-close kicks in after <code>held_at</code>; you can force close or reopen anytime. Gallery uploads work for draft, open, or closed events.</p>
+    ${list}
+    <hr class="divider" />
+    <h2>${formTitle}</h2>
+    <form class="form" id="event-form">
+      <input type="hidden" name="id" value="${escapeHtml(editing?.id || "")}" />
+      <label><span>Title</span><input name="title" required maxlength="200" value="${escapeHtml(editing?.title || "")}" placeholder="OFW Tambayan — March 2026" /></label>
+      <label><span>Slug</span><input name="slug" required maxlength="80" value="${escapeHtml(editing?.slug || "")}" placeholder="2026-03-29" /></label>
+      <label><span>Held at (ISO, Asia/Singapore)</span><input name="held_at" required value="${escapeHtml(editing?.held_at || "")}" placeholder="2026-03-29T14:00:00+08:00" /></label>
+      <label><span>Venue / address</span><input name="address" required maxlength="300" value="${escapeHtml(editing?.address || DEFAULT_VENUE)}" /></label>
+      <label><span>Announcement title <em>optional — defaults to event title</em></span><input name="announcement_title" maxlength="200" value="${escapeHtml(editing?.announcement_title || "")}" /></label>
+      <label><span>Announcement body</span><textarea name="announcement_body" rows="4" maxlength="2000">${escapeHtml(editing?.announcement_body || "")}</textarea></label>
+      <label><span>Status</span>
+        <select name="status">
+          ${(["draft", "open", "closed"] as EventStatus[])
             .map(
-              (e) =>
-                `<option value="${escapeHtml(e.id)}" ${settings.next_event_id === e.id ? "selected" : ""}>${escapeHtml(e.title)} (${escapeHtml(e.slug)})</option>`,
+              (s) =>
+                `<option value="${s}" ${(editing?.status || "draft") === s ? "selected" : ""}>${s}</option>`,
             )
             .join("")}
         </select>
       </label>
-      <button class="btn btn-primary" type="submit">Save announcement</button>
-      <p id="announcement-status" class="form-status" role="status"></p>
-    </form>
-    <hr class="divider" />
-    <h2>Create event</h2>
-    <form class="form" id="event-form">
-      <label><span>Title</span><input name="title" required maxlength="200" placeholder="OFW Tambayan — March 2026" /></label>
-      <label><span>Slug</span><input name="slug" required maxlength="80" placeholder="2026-03-29" /></label>
-      <label><span>Held at (ISO, Asia/Singapore)</span><input name="held_at" required placeholder="2026-03-29T14:00:00+08:00" /></label>
-      <button class="btn btn-ghost" type="submit">Create event</button>
+      <button class="btn btn-primary" type="submit">${editing ? "Save event" : "Create event"}</button>
+      ${editing ? `<a class="btn btn-ghost" href="/admin/events">Cancel edit</a>` : ""}
       <p id="event-status" class="form-status" role="status"></p>
     </form>
-    <script src="/admin/announcement.js" defer></script>`;
+    <script src="/admin/events.js" defer></script>`;
 
-  return html(adminShell(env, request, "Announcement", body, "announcement"));
+  return html(adminShell(env, request, "Events", body, "events"));
 }
 
-async function apiSaveAnnouncement(request: Request, env: Env): Promise<Response> {
+async function apiUpsertEvent(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as {
+    id?: string;
+    title?: string;
+    slug?: string;
+    held_at?: string;
+    address?: string;
     announcement_title?: string;
     announcement_body?: string;
-    location_override?: string;
-    next_event_id?: string;
+    status?: string;
   };
-  const title = String(body.announcement_title || "").trim();
-  const text = String(body.announcement_body || "").trim();
-  if (!title || !text) return json({ error: "Title and body are required" }, 400);
-  const location = String(body.location_override || "").trim() || null;
-  const nextId = String(body.next_event_id || "").trim() || null;
-  await env.DB.prepare(
-    `UPDATE site_settings
-     SET announcement_title = ?, announcement_body = ?, location_override = ?, next_event_id = ?, updated_at = datetime('now')
-     WHERE id = 1`,
-  )
-    .bind(title, text, location, nextId)
-    .run();
-  return json({ ok: true });
+  const title = String(body.title || "").trim();
+  const slug = slugify(String(body.slug || title));
+  const held_at = String(body.held_at || "").trim();
+  const address = String(body.address || "").trim() || DEFAULT_VENUE;
+  const announcement_title = String(body.announcement_title || "").trim() || null;
+  const announcement_body = String(body.announcement_body || "").trim();
+  const statusRaw = String(body.status || "draft").toLowerCase();
+  const status: EventStatus =
+    statusRaw === "open" || statusRaw === "closed" || statusRaw === "draft" ? statusRaw : "draft";
+
+  if (!title || !slug || !held_at) return json({ error: "title, slug, held_at required" }, 400);
+  if (Number.isNaN(new Date(held_at).getTime())) {
+    return json({ error: "held_at must be a valid datetime" }, 400);
+  }
+
+  const id = String(body.id || "").trim() || crypto.randomUUID();
+  const existing = await env.DB.prepare(`SELECT id FROM events WHERE id = ?`)
+    .bind(id)
+    .first<{ id: string }>();
+
+  try {
+    if (existing) {
+      await env.DB.prepare(
+        `UPDATE events
+         SET slug = ?, title = ?, held_at = ?, address = ?, announcement_title = ?, announcement_body = ?, status = ?
+         WHERE id = ?`,
+      )
+        .bind(slug, title, held_at, address, announcement_title, announcement_body, status, id)
+        .run();
+    } else {
+      await env.DB.prepare(
+        `INSERT INTO events (id, slug, title, held_at, address, announcement_title, announcement_body, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+        .bind(id, slug, title, held_at, address, announcement_title, announcement_body, status)
+        .run();
+    }
+  } catch {
+    return json({ error: "Could not save event (slug may already exist)" }, 400);
+  }
+
+  if (status === "open") {
+    await enforceSingleOpen(env.DB, id);
+  }
+
+  return json({ ok: true, id, slug, status });
 }
 
-async function apiCreateEvent(request: Request, env: Env): Promise<Response> {
-  const body = (await request.json()) as { title?: string; slug?: string; held_at?: string };
-  const title = String(body.title || "").trim();
-  const slug = String(body.slug || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-");
-  const held_at = String(body.held_at || "").trim();
-  if (!title || !slug || !held_at) return json({ error: "title, slug, held_at required" }, 400);
-  const id = crypto.randomUUID();
-  try {
-    await env.DB.prepare(
-      `INSERT INTO events (id, slug, title, held_at) VALUES (?, ?, ?, ?)`,
-    )
-      .bind(id, slug, title, held_at)
-      .run();
-  } catch {
-    return json({ error: "Could not create event (slug may already exist)" }, 400);
+async function apiSetEventStatus(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as { id?: string; status?: string };
+  const id = String(body.id || "").trim();
+  const statusRaw = String(body.status || "").toLowerCase();
+  if (!id) return json({ error: "id required" }, 400);
+  if (statusRaw !== "open" && statusRaw !== "closed" && statusRaw !== "draft") {
+    return json({ error: "status must be draft, open, or closed" }, 400);
   }
-  return json({ ok: true, id, slug });
+  const event = await env.DB.prepare(`SELECT id FROM events WHERE id = ?`)
+    .bind(id)
+    .first<{ id: string }>();
+  if (!event) return json({ error: "event not found" }, 404);
+
+  await env.DB.prepare(`UPDATE events SET status = ? WHERE id = ?`).bind(statusRaw, id).run();
+  if (statusRaw === "open") {
+    await enforceSingleOpen(env.DB, id);
+  }
+  return json({ ok: true, id, status: statusRaw });
 }
 
 async function renderRegistrations(request: Request, env: Env): Promise<Response> {
   const events = await env.DB.prepare("SELECT * FROM events ORDER BY held_at DESC").all<EventRow>();
-  const settings = await getSettings(env.DB);
-  const defaultEvent = settings.next_event_id || events.results[0]?.id || "";
+  const open = await getOpenEvent(env.DB);
+  const defaultEvent = open?.id || events.results[0]?.id || "";
 
   const body = `
     <h1>Registrations</h1>
-    <p class="lede">Search, sort, paginate, and export. Filter by event.</p>
+    <p class="lede">Search, sort, paginate, and export. Filter by event. Add a walk-in or late guest for any event, including closed ones.</p>
     <div class="toolbar">
       <label>Event
         <select id="event-filter">
@@ -320,7 +397,7 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
           ${events.results
             .map(
               (e) =>
-                `<option value="${escapeHtml(e.id)}" ${e.id === defaultEvent ? "selected" : ""}>${escapeHtml(e.title)}</option>`,
+                `<option value="${escapeHtml(e.id)}" ${e.id === defaultEvent ? "selected" : ""}>${escapeHtml(e.title)} (${escapeHtml(e.status)})</option>`,
             )
             .join("")}
         </select>
@@ -349,6 +426,7 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
             <th>Email</th>
             <th>Mobile</th>
             <th>Event</th>
+            <th>Source</th>
             <th>Registered</th>
           </tr>
         </thead>
@@ -360,6 +438,26 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
       <span id="page-info">Page 1</span>
       <button type="button" class="btn btn-ghost" id="next-page">Next</button>
     </div>
+    <hr class="divider" />
+    <h2>Add registration</h2>
+    <p class="lede">For walk-ins or late guests — works on draft, open, or closed events.</p>
+    <form class="form" id="admin-reg-form">
+      <label>Event
+        <select name="event_id" required>
+          ${events.results
+            .map(
+              (e) =>
+                `<option value="${escapeHtml(e.id)}" ${e.id === defaultEvent ? "selected" : ""}>${escapeHtml(e.title)} (${escapeHtml(e.status)})</option>`,
+            )
+            .join("")}
+        </select>
+      </label>
+      <label><span>Name</span><input name="name" required maxlength="120" /></label>
+      <label><span>Email <em>optional</em></span><input name="email" type="email" maxlength="200" /></label>
+      <label><span>Mobile</span><input name="mobile" required maxlength="20" placeholder="+65…" /></label>
+      <button class="btn btn-primary" type="submit">Add guest</button>
+      <p id="admin-reg-status" class="form-status" role="status"></p>
+    </form>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js" defer></script>
@@ -415,10 +513,45 @@ async function apiRegistrations(request: Request, env: Env): Promise<Response> {
   });
 }
 
+async function apiAdminCreateRegistration(request: Request, env: Env): Promise<Response> {
+  const body = (await request.json()) as {
+    event_id?: string;
+    name?: string;
+    email?: string;
+    mobile?: string;
+  };
+  const eventId = String(body.event_id || "").trim();
+  const name = String(body.name || "").trim();
+  const email = String(body.email || "").trim();
+  const mobile = String(body.mobile || "").trim();
+
+  if (!eventId) return json({ error: "event_id required" }, 400);
+  if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
+  if (!isValidOptionalEmail(email)) return json({ error: "Email looks invalid." }, 400);
+  const mobileNorm = normalizeMobile(mobile);
+  if (!mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
+
+  const event = await env.DB.prepare(`SELECT id, title FROM events WHERE id = ?`)
+    .bind(eventId)
+    .first<{ id: string; title: string }>();
+  if (!event) return json({ error: "event not found" }, 404);
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, created_at)
+     VALUES (?, ?, ?, ?, ?, NULL, 'admin', ?)`,
+  )
+    .bind(id, eventId, name, email || null, mobileNorm, now)
+    .run();
+
+  return json({ ok: true, id, event: { id: event.id, title: event.title } });
+}
+
 async function handleAdminGallery(request: Request, env: Env): Promise<Response> {
   const events = await env.DB.prepare("SELECT * FROM events ORDER BY held_at DESC").all<EventRow>();
   const selected = new URL(request.url).searchParams.get("event_id") || events.results[0]?.id || "";
-  let imagesHtml = "<p class=\"notice\">Select an event.</p>";
+  let imagesHtml = "<p class=\"notice\">Create an event first, then upload photos anytime.</p>";
   if (selected) {
     const images = await env.DB.prepare(
       `SELECT * FROM gallery_images WHERE event_id = ? ORDER BY sort_order, created_at`,
@@ -427,7 +560,7 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
       .all();
     imagesHtml =
       images.results.length === 0
-        ? `<p class="notice">No photos yet for this event.</p>`
+        ? `<p class="notice">No photos yet for this event. Upload anytime — registration status does not matter.</p>`
         : `<ul class="admin-photo-list">
           ${images.results
             .map((img: Record<string, unknown>) => {
@@ -447,14 +580,14 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
 
   const body = `
     <h1>Gallery upload</h1>
-    <p class="lede">Images are stored in R2 and linked to an event.</p>
+    <p class="lede">Images are stored in R2 and linked to an event. Upload as soon as the event exists (draft, open, or closed).</p>
     <form class="form" id="gallery-form">
       <label>Event
         <select name="event_id" id="gallery-event" required>
           ${events.results
             .map(
               (e) =>
-                `<option value="${escapeHtml(e.id)}" ${e.id === selected ? "selected" : ""}>${escapeHtml(e.title)}</option>`,
+                `<option value="${escapeHtml(e.id)}" ${e.id === selected ? "selected" : ""}>${escapeHtml(e.title)} (${escapeHtml(e.status)})</option>`,
             )
             .join("")}
         </select>
@@ -505,7 +638,6 @@ async function apiUploadGallery(request: Request, env: Env): Promise<Response> {
     .bind(id, eventId, key, maxSort + 1, caption)
     .run();
 
-  // Set cover if missing
   await env.DB.prepare(
     `UPDATE events SET cover_image_key = COALESCE(cover_image_key, ?) WHERE id = ?`,
   )

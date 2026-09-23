@@ -15,13 +15,13 @@
     "SITE_NAME": "OFW Tambayan SG",
     "SITE_URL": "https://tambayan.fsdac.app",
     "FACEBOOK_URL": "https://www.facebook.com/p/OFW-Tambayan-SG-61571932246535/",
-    "DEFAULT_LOCATION": "Level 1 Auditorium, 798 Thomson Road"
+    "DEFAULT_LOCATION": "Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "tambayan-db",
-      "database_id": "00000000-0000-0000-0000-000000000001",
+      "database_id": "b10b3870-29c0-41aa-b52d-5c467d31185b",
       "migrations_dir": "migrations"
     }
   ],
@@ -34,8 +34,8 @@
   ],
   "routes": [
     {
-      "pattern": "tambayan.fsdac.app/*",
-      "zone_name": "fsdac.app"
+      "pattern": "tambayan.fsdac.app",
+      "custom_domain": true
     }
   ]
 }
