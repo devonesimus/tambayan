@@ -62,10 +62,10 @@ export function layout(opts: {
     <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
       <img
         class="brand-logo"
-        src="/brand/logo-lockup-on-light.png"
+        src="/brand/ofwt-logo-blue.png"
         alt="OFW Tambayan Singapore — Your Home Away From Home"
-        width="180"
-        height="85"
+        width="160"
+        height="92"
         decoding="async"
       />
     </a>

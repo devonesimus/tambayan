@@ -53,10 +53,10 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
     <section class="hero">
       <img
         class="hero-logo"
-        src="/brand/logo-lockup-on-light.png"
+        src="/brand/ofwt-logo-blue.png"
         alt="OFW Tambayan Singapore — Your Home Away From Home"
-        width="320"
-        height="151"
+        width="280"
+        height="161"
         decoding="async"
       />
       <h1 class="hero-headline">${escapeHtml(title)}</h1>
