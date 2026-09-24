@@ -25,7 +25,13 @@ export default {
 
       if (path === "/api/register") return handleRegisterApi(request, env);
 
-      if (path.startsWith("/api/admin") || path.startsWith("/admin")) {
+      if (
+        (path.startsWith("/api/admin") || path.startsWith("/admin")) &&
+        !path.startsWith("/admin/") 
+      ) {
+        return handleAdmin(request, env, path);
+      }
+      if (path.startsWith("/admin/") && !/\.(?:js|css|map)$/.test(path)) {
         return handleAdmin(request, env, path);
       }
 

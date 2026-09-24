@@ -82,6 +82,7 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
           <h1 id="hero-date" class="hero-date">${escapeHtml(headline)}</h1>
           <p class="hero-line">Every last Sunday — fellowship, worship &amp; community</p>
           <p class="hero-venue">${escapeHtml(where)}</p>
+          <p class="hero-note">Free to join</p>
           <div class="hero-cta">${cta}</div>
           <div class="hero-secondary">
             <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
@@ -235,22 +236,22 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
       </div>
       <form id="register-form" class="form form-register" method="post" action="/api/register" novalidate>
         <label>
-          <span>Name <em>required</em></span>
+          <span class="field-label">Name <em>required</em> <span class="field-hint" data-for="name"></span></span>
           <input name="name" type="text" autocomplete="name" required maxlength="120" />
         </label>
         <label>
-          <span>Email <em>optional</em></span>
+          <span class="field-label">Email <em>optional</em> <span class="field-hint" data-for="email"></span></span>
           <input name="email" type="email" autocomplete="email" maxlength="200" />
         </label>
         <label>
-          <span>Mobile <em>required</em></span>
+          <span class="field-label">Mobile <em>required</em> <span class="field-hint" data-for="mobile"></span></span>
           <input name="mobile" type="tel" autocomplete="tel" required placeholder="+65…" maxlength="20" />
         </label>
         <label class="check">
           <input name="privacy" type="checkbox" value="1" required />
-          <span>I agree to the <a href="/privacy" target="_blank">Privacy Policy</a></span>
+          <span class="field-label">I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> <span class="field-hint" data-for="privacy"></span></span>
         </label>
-        <button class="btn btn-cta" type="submit">Submit registration</button>
+        <button class="btn btn-cta" type="submit">Register</button>
         <p id="register-status" class="form-status" role="status" aria-live="polite"></p>
       </form>
       <script src="/register.js" defer></script>`
@@ -262,8 +263,8 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
         <h1>Register</h1>
         <p class="lede">${
           state === "open"
-            ? "Sign up for the next fellowship gathering."
-            : "Registration opens with each published gathering."
+            ? "Sign up for the next tambayan session. It’s free."
+            : "Registration opens with each published gathering. It’s free."
         }</p>
       </header>
       ${formBlock}

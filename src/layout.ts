@@ -30,9 +30,19 @@ export function layout(opts: {
     type: "website",
   };
   const isHome = opts.active === "home";
+  const isAdmin = opts.active === "admin";
   const pageClass = opts.active ? `page-${opts.active}` : "";
   const bodyClass = [isHome ? "page-home" : "page-light", pageClass].filter(Boolean).join(" ");
   const logoSrc = isHome ? "/brand/ofwt-logo-white.png" : "/brand/ofwt-logo-blue.png";
+  const adminThemeScript = isAdmin
+    ? `<script>
+try {
+  if (localStorage.getItem("tambayan-admin-theme") === "dark") {
+    document.documentElement.setAttribute("data-admin-theme", "dark");
+  }
+} catch (e) {}
+</script>`
+    : "";
   const nav = (id: typeof opts.active, href: string, label: string) =>
     `<a href="${href}" class="${opts.active === id ? "is-active" : ""}">${label}</a>`;
 
@@ -40,7 +50,7 @@ export function layout(opts: {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>${escapeHtml(opts.title)}</title>
   <meta name="description" content="${escapeHtml(desc)}" />
   <link rel="canonical" href="${escapeHtml(og.url)}" />
@@ -58,6 +68,7 @@ export function layout(opts: {
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Caveat+Brush&family=Kalam:wght@700&family=League+Gothic&family=Montserrat:wght@400;500;600;700&family=Open+Sans:ital@1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
+  ${adminThemeScript}
   ${opts.extraHead || ""}
 </head>
 <body class="${bodyClass}">
@@ -65,20 +76,18 @@ export function layout(opts: {
   <header class="site-header${isHome ? " site-header--home" : ""}">
     <div class="site-header__inner">
       <a class="brand" href="/" aria-label="OFW Tambayan Singapore — home">
-        <img
-          class="brand-logo"
-          src="${logoSrc}"
-          alt="OFW Tambayan Singapore — Your Home Away From Home"
-          width="160"
-          height="92"
-          decoding="async"
-        />
+        ${
+          isAdmin
+            ? `<img class="brand-logo brand-logo--on-light" src="/brand/ofwt-logo-blue.png" alt="OFW Tambayan Singapore — Your Home Away From Home" width="160" height="92" decoding="async" />
+        <img class="brand-logo brand-logo--on-dark" src="/brand/ofwt-logo-white.png" alt="" width="160" height="92" decoding="async" />`
+            : `<img class="brand-logo" src="${logoSrc}" alt="OFW Tambayan Singapore — Your Home Away From Home" width="160" height="92" decoding="async" />`
+        }
       </a>
       <nav class="nav" aria-label="Primary">
         ${nav("home", "/", "Home")}
         ${nav("register", "/register", "Register")}
-        ${nav("gallery", "/gallery", "Gallery")}
-        ${nav("shorts", "/shorts", "Shorts")}
+        <span class="nav-soon" title="Coming soon" aria-label="Gallery, coming soon">Gallery</span>
+        <span class="nav-soon" title="Coming soon" aria-label="Shorts, coming soon">Shorts</span>
       </nav>
     </div>
   </header>
@@ -91,8 +100,6 @@ export function layout(opts: {
       <a href="${escapeHtml(opts.env.FACEBOOK_URL)}" rel="noopener noreferrer" target="_blank">Facebook</a>
       ·
       <a href="/privacy">Privacy</a>
-      ·
-      <a href="/admin">Admin</a>
     </p>
   </footer>
 </body>
