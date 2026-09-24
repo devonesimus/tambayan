@@ -55,6 +55,14 @@ export type VideoRow = {
 
 export const DEFAULT_VENUE = "Level 1 Main Auditorium, 798 Thomson Road, Singapore 298186";
 
+/** Locked gallery upload limits — keep in sync with public/admin/gallery.js */
+export const GALLERY_MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+export const GALLERY_MAX_BATCH = 20;
+export const GALLERY_MAX_PER_EVENT = 120;
+export const GALLERY_ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+export const GALLERY_ALLOWED_EXT = new Set(["jpg", "jpeg", "png", "webp"]);
+export const GALLERY_WARN_REMAINING = 20; // warn in UI when this many slots (or fewer) left
+
 export function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
     status,

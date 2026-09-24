@@ -37,12 +37,12 @@
       ? rows
           .map(
             (r) => `<tr>
-          <td>${escape(r.name)}</td>
+          <td>${escape(r.name || "")}</td>
           <td>${escape(r.email || "")}</td>
-          <td>${escape(r.mobile)}</td>
+          <td>${escape(r.mobile || "")}</td>
           <td>${escape(r.event_title || "")}</td>
           <td>${escape(r.source || "public")}</td>
-          <td>${escape(r.created_at)}</td>
+          <td>${escape(r.created_at || "")}</td>
         </tr>`,
           )
           .join("")

@@ -25,6 +25,20 @@ export default {
 
       if (path === "/api/register") return handleRegisterApi(request, env);
 
+      // Admin page JS/CSS live under /public/admin/*. Do not send those to the
+      // auth router — otherwise /admin/registrations.js is redirected/404'd and
+      // the registrations table never loads.
+      if (
+        path.startsWith("/admin/") &&
+        /\.(js|css|map|svg|png|jpe?g|webp|ico|woff2?)$/i.test(path)
+      ) {
+        if (env.ASSETS) {
+          const asset = await env.ASSETS.fetch(request);
+          if (asset.status !== 404) return asset;
+        }
+        return json({ error: "Not found" }, 404);
+      }
+
       if (path.startsWith("/api/admin") || path.startsWith("/admin")) {
         return handleAdmin(request, env, path);
       }
