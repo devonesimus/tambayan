@@ -91,8 +91,6 @@ export function layout(opts: {
       <a href="${escapeHtml(opts.env.FACEBOOK_URL)}" rel="noopener noreferrer" target="_blank">Facebook</a>
       ·
       <a href="/privacy">Privacy</a>
-      ·
-      <a href="/admin">Admin</a>
     </p>
   </footer>
 </body>

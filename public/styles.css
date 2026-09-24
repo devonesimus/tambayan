@@ -848,6 +848,17 @@ h1 {
 }
 .form-status { min-height: 1.25rem; color: var(--accent-deep); font-weight: 600; margin: 0; }
 .form-status.is-error { color: var(--danger); }
+.field-hint {
+  margin: -0.35rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted, #5c6570);
+  line-height: 1.4;
+}
+.gallery-limit-warn {
+  border-color: #c47a1a;
+  background: #fff7eb;
+  color: #6b3e00;
+}
 
 .notice {
   padding: 1rem 1.1rem;

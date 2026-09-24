@@ -10,6 +10,12 @@ import {
   enforceSingleOpen,
   escapeHtml,
   formatEventWhen,
+  GALLERY_ALLOWED_EXT,
+  GALLERY_ALLOWED_MIME,
+  GALLERY_MAX_BATCH,
+  GALLERY_MAX_FILE_BYTES,
+  GALLERY_MAX_PER_EVENT,
+  GALLERY_WARN_REMAINING,
   getOpenEvent,
   html,
   isPubliclyOpen,
@@ -454,7 +460,7 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
       </label>
       <label><span>Name</span><input name="name" required maxlength="120" /></label>
       <label><span>Email <em>optional</em></span><input name="email" type="email" maxlength="200" /></label>
-      <label><span>Mobile</span><input name="mobile" required maxlength="20" placeholder="+65…" /></label>
+      <label><span>Mobile <em>optional for walk-ins</em></span><input name="mobile" maxlength="20" placeholder="+65…" /></label>
       <button class="btn btn-primary" type="submit">Add guest</button>
       <p id="admin-reg-status" class="form-status" role="status"></p>
     </form>
@@ -528,8 +534,13 @@ async function apiAdminCreateRegistration(request: Request, env: Env): Promise<R
   if (!eventId) return json({ error: "event_id required" }, 400);
   if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
   if (!isValidOptionalEmail(email)) return json({ error: "Email looks invalid." }, 400);
-  const mobileNorm = normalizeMobile(mobile);
-  if (!mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
+  // Walk-ins often have no number; empty mobile is allowed for admin-sourced rows.
+  let mobileNorm = "";
+  if (mobile) {
+    const normalized = normalizeMobile(mobile);
+    if (!normalized) return json({ error: "Enter a valid mobile number." }, 400);
+    mobileNorm = normalized;
+  }
 
   const event = await env.DB.prepare(`SELECT id, title FROM events WHERE id = ?`)
     .bind(eventId)
@@ -551,6 +562,7 @@ async function apiAdminCreateRegistration(request: Request, env: Env): Promise<R
 async function handleAdminGallery(request: Request, env: Env): Promise<Response> {
   const events = await env.DB.prepare("SELECT * FROM events ORDER BY held_at DESC").all<EventRow>();
   const selected = new URL(request.url).searchParams.get("event_id") || events.results[0]?.id || "";
+  let photoCount = 0;
   let imagesHtml = "<p class=\"notice\">Create an event first, then upload photos anytime.</p>";
   if (selected) {
     const images = await env.DB.prepare(
@@ -558,6 +570,7 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
     )
       .bind(selected)
       .all();
+    photoCount = images.results.length;
     imagesHtml =
       images.results.length === 0
         ? `<p class="notice">No photos yet for this event. Upload anytime — registration status does not matter.</p>`
@@ -578,10 +591,25 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
         </ul>`;
   }
 
+  const remaining = Math.max(0, GALLERY_MAX_PER_EVENT - photoCount);
+  const atCap = remaining === 0;
+  const nearLimit = !atCap && remaining <= GALLERY_WARN_REMAINING;
+  const limitHint = atCap
+    ? `<p class="notice gallery-limit-warn" role="status">This event is at the ${GALLERY_MAX_PER_EVENT}-photo limit. Delete some photos before uploading more.</p>`
+    : nearLimit
+      ? `<p class="notice gallery-limit-warn" role="status">Near the limit: ${photoCount} of ${GALLERY_MAX_PER_EVENT} photos used (${remaining} left). Max ${GALLERY_MAX_BATCH} per upload, 5&nbsp;MB each, JPEG/PNG/WebP only.</p>`
+      : `<p class="notice" id="gallery-limit-info">${photoCount} of ${GALLERY_MAX_PER_EVENT} photos · up to ${GALLERY_MAX_BATCH} per batch · 5&nbsp;MB max · JPEG/PNG/WebP only</p>`;
+
   const body = `
     <h1>Gallery upload</h1>
     <p class="lede">Images are stored in R2 and linked to an event. Upload as soon as the event exists (draft, open, or closed).</p>
-    <form class="form" id="gallery-form">
+    ${selected ? limitHint : ""}
+    <form class="form" id="gallery-form"
+      data-max-file-bytes="${GALLERY_MAX_FILE_BYTES}"
+      data-max-batch="${GALLERY_MAX_BATCH}"
+      data-max-per-event="${GALLERY_MAX_PER_EVENT}"
+      data-photo-count="${photoCount}"
+      data-remaining="${remaining}">
       <label>Event
         <select name="event_id" id="gallery-event" required>
           ${events.results
@@ -592,13 +620,14 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
             .join("")}
         </select>
       </label>
-      <label>Caption <em>optional</em>
-        <input name="caption" maxlength="200" />
+      <label>Caption <em>optional · applied to all in this batch</em>
+        <input name="caption" maxlength="200" ${atCap ? "disabled" : ""} />
       </label>
-      <label>Photo
-        <input name="file" type="file" accept="image/*" required />
+      <label>Photos
+        <input name="file" id="gallery-files" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple required ${atCap ? "disabled" : ""} />
       </label>
-      <button class="btn btn-primary" type="submit">Upload</button>
+      <p class="field-hint">JPEG, PNG, or WebP · max 5&nbsp;MB each · up to ${GALLERY_MAX_BATCH} files per upload · ${GALLERY_MAX_PER_EVENT} photos per event</p>
+      <button class="btn btn-primary" type="submit" ${atCap ? "disabled" : ""}>Upload</button>
       <p id="gallery-status" class="form-status" role="status"></p>
     </form>
     <div id="gallery-list">${imagesHtml}</div>
@@ -611,20 +640,75 @@ async function apiUploadGallery(request: Request, env: Env): Promise<Response> {
   const form = await request.formData();
   const eventId = String(form.get("event_id") || "");
   const caption = String(form.get("caption") || "").trim() || null;
-  const file = form.get("file");
-  if (!eventId || !(file instanceof File)) return json({ error: "event_id and file required" }, 400);
+  const files = form
+    .getAll("file")
+    .filter((f): f is File => f instanceof File && f.size > 0);
+
+  if (!eventId) return json({ error: "Choose an event before uploading." }, 400);
+  if (files.length === 0) return json({ error: "Choose at least one photo to upload." }, 400);
+  if (files.length > GALLERY_MAX_BATCH) {
+    return json(
+      {
+        error: `Too many files in one upload. Select at most ${GALLERY_MAX_BATCH} images at a time.`,
+      },
+      400,
+    );
+  }
+
   const event = await env.DB.prepare("SELECT id, slug FROM events WHERE id = ?")
     .bind(eventId)
     .first<{ id: string; slug: string }>();
-  if (!event) return json({ error: "event not found" }, 404);
+  if (!event) return json({ error: "Event not found." }, 404);
 
-  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-  const id = crypto.randomUUID();
-  const key = `gallery/${event.slug}/${id}.${ext}`;
-  await env.GALLERY.put(key, await file.arrayBuffer(), {
-    httpMetadata: { contentType: file.type || "image/jpeg" },
-  });
-  const maxSort =
+  const existing =
+    (
+      await env.DB.prepare(`SELECT COUNT(*) AS c FROM gallery_images WHERE event_id = ?`)
+        .bind(eventId)
+        .first<{ c: number }>()
+    )?.c ?? 0;
+
+  if (existing >= GALLERY_MAX_PER_EVENT) {
+    return json(
+      {
+        error: `This event already has ${GALLERY_MAX_PER_EVENT} photos (the maximum). Delete some before uploading more.`,
+      },
+      400,
+    );
+  }
+  if (existing + files.length > GALLERY_MAX_PER_EVENT) {
+    const room = GALLERY_MAX_PER_EVENT - existing;
+    return json(
+      {
+        error: `Only ${room} photo slot${room === 1 ? "" : "s"} left for this event (max ${GALLERY_MAX_PER_EVENT}). You selected ${files.length}.`,
+      },
+      400,
+    );
+  }
+
+  for (const file of files) {
+    const ext = (file.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const mimeOk = GALLERY_ALLOWED_MIME.has(file.type);
+    const extOk = GALLERY_ALLOWED_EXT.has(ext);
+    if (!mimeOk && !extOk) {
+      return json(
+        {
+          error: `"${file.name}" is not an allowed type. Use JPEG, PNG, or WebP only.`,
+        },
+        400,
+      );
+    }
+    if (file.size > GALLERY_MAX_FILE_BYTES) {
+      const mb = (file.size / (1024 * 1024)).toFixed(1);
+      return json(
+        {
+          error: `"${file.name}" is ${mb} MB. Each photo must be 5 MB or smaller.`,
+        },
+        400,
+      );
+    }
+  }
+
+  let maxSort =
     (
       await env.DB.prepare(
         `SELECT COALESCE(MAX(sort_order), -1) AS m FROM gallery_images WHERE event_id = ?`,
@@ -632,19 +716,57 @@ async function apiUploadGallery(request: Request, env: Env): Promise<Response> {
         .bind(eventId)
         .first<{ m: number }>()
     )?.m ?? -1;
-  await env.DB.prepare(
-    `INSERT INTO gallery_images (id, event_id, r2_key, sort_order, caption) VALUES (?, ?, ?, ?, ?)`,
-  )
-    .bind(id, eventId, key, maxSort + 1, caption)
-    .run();
 
-  await env.DB.prepare(
-    `UPDATE events SET cover_image_key = COALESCE(cover_image_key, ?) WHERE id = ?`,
-  )
-    .bind(key, eventId)
-    .run();
+  const uploaded: { id: string; key: string }[] = [];
+  for (const file of files) {
+    const rawExt = (file.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const ext = GALLERY_ALLOWED_EXT.has(rawExt)
+      ? rawExt === "jpeg"
+        ? "jpg"
+        : rawExt
+      : file.type === "image/png"
+        ? "png"
+        : file.type === "image/webp"
+          ? "webp"
+          : "jpg";
+    const contentType =
+      file.type && GALLERY_ALLOWED_MIME.has(file.type)
+        ? file.type
+        : ext === "png"
+          ? "image/png"
+          : ext === "webp"
+            ? "image/webp"
+            : "image/jpeg";
 
-  return json({ ok: true, id, key });
+    const id = crypto.randomUUID();
+    const key = `gallery/${event.slug}/${id}.${ext}`;
+    await env.GALLERY.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType },
+    });
+    maxSort += 1;
+    await env.DB.prepare(
+      `INSERT INTO gallery_images (id, event_id, r2_key, sort_order, caption) VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(id, eventId, key, maxSort, caption)
+      .run();
+    uploaded.push({ id, key });
+  }
+
+  if (uploaded[0]) {
+    await env.DB.prepare(
+      `UPDATE events SET cover_image_key = COALESCE(cover_image_key, ?) WHERE id = ?`,
+    )
+      .bind(uploaded[0].key, eventId)
+      .run();
+  }
+
+  return json({
+    ok: true,
+    count: uploaded.length,
+    ids: uploaded.map((u) => u.id),
+    keys: uploaded.map((u) => u.key),
+    photo_count: existing + uploaded.length,
+  });
 }
 
 async function apiDeleteGallery(request: Request, env: Env): Promise<Response> {
