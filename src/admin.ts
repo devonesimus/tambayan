@@ -22,12 +22,20 @@ import {
   isPubliclyOpen,
   isValidOptionalEmail,
   json,
+  linkPair,
+  namesSuspect,
   normalizeMobile,
+  personCompleteness,
   slugify,
   youtubeId,
   youtubeThumb,
+  birthMonth,
+  eventMonth,
+  foldName,
+  mobilesMatch,
   type EventRow,
   type EventStatus,
+  type PersonRow,
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
@@ -69,6 +77,7 @@ const menuIconPaths: Record<string, string> = {
   dashboard: `<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>`,
   events: `<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>`,
   registrations: `<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.8c1.6.8 2.7 2.6 3 5.2"/>`,
+  people: `<circle cx="12" cy="8" r="3.2"/><path d="M5 19.5c.8-3.2 3.2-5 7-5s6.2 1.8 7 5"/>`,
   gallery: `<rect x="3" y="3.5" width="18" height="17" rx="2"/><circle cx="8.5" cy="9" r="1.8"/><path d="m21 15.5-5-5-9.5 10"/>`,
   videos: `<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m10 9 5 3-5 3z"/>`,
   activity: `<path d="M3 12h4l2.5-6.5 5 13L17 12h4"/>`,
@@ -104,6 +113,7 @@ function adminShell(
     ["dashboard", "/admin", "Dashboard"],
     ["events", "/admin/events", "Events"],
     ["registrations", "/admin/registrations", "Registrations"],
+    ["people", "/admin/people", "People"],
     ["gallery", "/admin/gallery", "Gallery"],
     ["videos", "/admin/videos", "Videos"],
   ]
@@ -317,6 +327,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     return new Response(null, { status: 302, headers: { Location: "/admin/events" } });
   }
   if (path === "/admin/registrations") return renderRegistrations(request, env);
+  if (path === "/admin/people") return renderPeople(request, env);
   if (path === "/admin/gallery") return handleAdminGallery(request, env);
   if (path === "/admin/videos") return handleAdminVideos(request, env);
   if (path === "/admin/activity") return renderActivity(request, env);
@@ -331,8 +342,23 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === "/api/admin/registrations/update" && request.method === "POST") {
     return apiAdminUpdateRegistration(request, env, auth.email);
   }
+  if (path === "/api/admin/registrations/delete" && request.method === "POST") {
+    return apiAdminDeleteRegistration(request, env, auth.email);
+  }
   if (path === "/api/admin/registrations/attendance" && request.method === "POST") {
     return apiAdminSetAttendance(request, env, auth.email);
+  }
+  if (path === "/api/admin/people" && request.method === "GET") {
+    return apiSearchPeople(request, env);
+  }
+  if (path === "/api/admin/people/merge" && request.method === "POST") {
+    return apiMergePeople(request, env, auth.email);
+  }
+  if (path === "/api/admin/people/distinct" && request.method === "POST") {
+    return apiDistinctPeople(request, env, auth.email);
+  }
+  if (path === "/api/admin/people/update" && request.method === "POST") {
+    return apiUpdatePerson(request, env, auth.email);
   }
   if (path === "/api/admin/events" && request.method === "POST") {
     return apiUpsertEvent(request, env, auth.email);
@@ -908,7 +934,7 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
   const eventOptions = events.results
     .map(
       (e) =>
-        `<option value="${escapeHtml(e.id)}" ${e.id === defaultEvent ? "selected" : ""}>${escapeHtml(shortEventTitle(e.title))} · ${escapeHtml(statusLabel(e.status))}</option>`,
+        `<option value="${escapeHtml(e.id)}" data-held="${escapeHtml(e.held_at)}" ${e.id === defaultEvent ? "selected" : ""}>${escapeHtml(shortEventTitle(e.title))} · ${escapeHtml(statusLabel(e.status))}</option>`,
     )
     .join("");
 
@@ -986,28 +1012,68 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
     </section>
     </div>
     <div class="reg-modal" id="guest-modal" hidden>
-      <button type="button" class="reg-modal-backdrop" data-close-modal aria-label="Close"></button>
+      <button type="button" class="reg-modal-backdrop" data-close-modal tabindex="-1" aria-label="Close"></button>
       <div class="reg-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="guest-modal-title">
         <div class="reg-modal-head">
           <h2 id="guest-modal-title">Add a guest</h2>
-          <button type="button" class="reg-modal-close" data-close-modal aria-label="Close">Close</button>
+          <button type="button" class="reg-modal-close reg-modal-x" data-close-modal aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
-        <p class="reg-modal-note">Works for Draft, Open, and Closed events. Mobile is optional.</p>
-        <form class="form" id="admin-reg-form">
-          <div class="reg-form-grid">
-            <label class="is-wide">Event
-              <select name="event_id" required>${eventOptions}</select>
+        <p class="gm-event">Adding to <strong id="guest-event-label"></strong><button type="button" class="gm-link" id="guest-event-change">Change</button></p>
+        <form class="form gm-form" id="admin-reg-form" autocomplete="off">
+          <label class="gm-event-select" id="guest-event-select" hidden>
+            <span class="visually-hidden">Event</span>
+            <select name="event_id" required>${eventOptions}</select>
+          </label>
+          <input type="hidden" name="person_id" value="" />
+          <div class="gm-person">
+            <label class="gm-name">
+              <span class="visually-hidden">Guest name</span>
+              <input name="name" required maxlength="120" placeholder="Type a name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="guest-suggest" />
             </label>
-            <label class="is-wide"><span>Name</span><input name="name" required maxlength="120" autocomplete="name" /></label>
-            <label><span>Email <em>optional</em></span><input name="email" type="email" maxlength="200" autocomplete="email" /></label>
-            <label><span>Mobile <em>optional</em></span><input name="mobile" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="+65…" /></label>
+            <div class="gm-suggest" id="guest-suggest" role="listbox" aria-label="People" hidden></div>
+            <div class="gm-chip" id="guest-chip" hidden>
+              <span class="pp-avatar" id="guest-chip-avatar" aria-hidden="true"></span>
+              <span class="pp-main"><span class="pp-name" id="guest-chip-name"></span><span class="pp-sub" id="guest-chip-sub"></span></span>
+              <button type="button" class="gm-chip-x" id="guest-suggest-clear" aria-label="Choose someone else"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+            </div>
           </div>
-          <div class="admin-form-actions">
-            <button class="btn btn-primary" type="submit">Save guest</button>
-            <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+          <div class="gm-notice" id="guest-notice" role="status" hidden>
+            <span id="guest-notice-text"></span>
+            <button type="button" class="btn btn-ghost btn-sm" id="guest-notice-action" hidden></button>
+          </div>
+          <div class="gm-new" id="guest-new-fields">
+            <label><span class="visually-hidden">Mobile</span><input name="mobile" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="Mobile, e.g. 9123 4567" /></label>
+            <details class="gm-more" id="guest-more">
+              <summary>More details</summary>
+              <label><span class="visually-hidden">Email</span><input name="email" type="email" maxlength="200" autocomplete="email" placeholder="Email" /></label>
+            </details>
+          </div>
+          <label class="gm-switch">
+            <input type="checkbox" name="attended" checked />
+            <span class="gm-track" aria-hidden="true"></span>
+            <span class="gm-switch-text"><strong>Here now</strong><em id="guest-here-hint">Marked as attended when saved</em></span>
+          </label>
+          <div class="admin-form-actions gm-actions">
+            <button class="btn btn-primary" type="submit">Add guest</button>
+            <button type="button" class="btn btn-ghost" data-close-modal>Done</button>
           </div>
           <p id="admin-reg-status" class="form-status" role="status"></p>
         </form>
+        <div class="gm-recent" id="guest-recent" hidden>
+          <h3>Added just now</h3>
+          <ul id="guest-recent-list"></ul>
+        </div>
+      </div>
+    </div>
+    <div class="reg-modal pp-confirm" id="guest-confirm" hidden>
+      <button type="button" class="reg-modal-backdrop" data-confirm-cancel tabindex="-1" aria-label="Cancel"></button>
+      <div class="reg-modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="guest-confirm-title" aria-describedby="guest-confirm-body">
+        <h2 class="pp-confirm-title" id="guest-confirm-title"></h2>
+        <p class="pp-confirm-body" id="guest-confirm-body"></p>
+        <div class="admin-form-actions pp-confirm-actions">
+          <button type="button" class="btn btn-ghost" id="guest-confirm-cancel" data-confirm-cancel>Cancel</button>
+          <button type="button" class="btn btn-primary btn-danger-solid" id="guest-confirm-ok">Remove</button>
+        </div>
       </div>
     </div>
     <div class="reg-modal" id="guest-edit-modal" hidden>
@@ -1016,6 +1082,10 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
         <div class="reg-modal-head">
           <h2 id="guest-edit-title">Guest</h2>
           <button type="button" class="reg-modal-close" data-close-edit aria-label="Close">Close</button>
+        </div>
+        <div class="reg-dupe-banner" id="guest-dupe" hidden>
+          <p id="guest-dupe-text"></p>
+          <a class="btn btn-ghost btn-sm" id="guest-dupe-link" href="/admin/people">Review duplicates</a>
         </div>
         <div class="reg-tabs" role="tablist" aria-label="Guest">
           <button type="button" class="reg-tab is-active" id="tab-attendance" role="tab" aria-selected="true" aria-controls="panel-attendance">Attendance</button>
@@ -1028,15 +1098,23 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
             <button type="button" class="reg-attend-choice" data-attended="1" aria-pressed="false">Attended</button>
           </div>
           <p id="guest-attend-status" class="form-status" role="status"></p>
+          <div class="reg-remove">
+            <p>Not coming, or added by mistake? This removes the registration only. The person stays in People.</p>
+            <button type="button" class="btn btn-ghost btn-sm btn-danger" id="guest-remove">Remove from this event</button>
+          </div>
         </div>
         <form class="form" id="guest-edit-form" hidden role="tabpanel" aria-labelledby="tab-details">
           <div class="reg-form-grid">
-            <label class="is-wide">Event
+            <label class="is-wide"><span>Move to another event</span>
               <select name="event_id" required>${eventOptions}</select>
+              <span class="ef-hint">Pick a different event to move this registration. The person stays the same.</span>
             </label>
             <label class="is-wide"><span>Name</span><input name="name" required maxlength="120" autocomplete="name" /></label>
             <label><span>Email <em>optional</em></span><input name="email" type="email" maxlength="200" autocomplete="email" /></label>
             <label><span>Mobile <em>optional</em></span><input name="mobile" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="+65…" /></label>
+            <label><span>Birth date <em>optional</em></span><input name="birth_date" type="date" /></label>
+            <label><span>Date joined <em>optional</em></span><input name="joined_on" type="date" /></label>
+            <label class="is-wide"><span>Carer <em>optional</em></span><input name="carer_name" maxlength="120" /></label>
           </div>
           <div class="admin-form-actions">
             <button class="btn btn-primary" type="submit">Save details</button>
@@ -1075,9 +1153,11 @@ async function apiRegistrations(request: Request, env: Env): Promise<Response> {
   const col = sortColumns[sortCol] || "r.created_at";
   const dir = sortDirRaw?.toLowerCase() === "asc" ? "ASC" : "DESC";
 
-  let sql = `SELECT r.*, e.title AS event_title, e.slug AS event_slug
+  let sql = `SELECT r.*, e.title AS event_title, e.slug AS event_slug, e.held_at AS event_held_at,
+                    p.name AS person_name, p.birth_date, p.joined_on, p.carer_name
              FROM registrations r
              JOIN events e ON e.id = r.event_id
+             LEFT JOIN people p ON p.id = r.person_id
              WHERE 1=1`;
   const binds: unknown[] = [];
   if (eventId) {
@@ -1099,30 +1179,53 @@ async function apiRegistrations(request: Request, env: Env): Promise<Response> {
   sql += ` ORDER BY ${col} ${dir} LIMIT ? OFFSET ?`;
   const rows = await env.DB.prepare(sql)
     .bind(...binds, pageSize, (page - 1) * pageSize)
-    .all<RegistrationRow & { event_title: string; event_slug: string }>();
+    .all<
+      RegistrationRow & {
+        event_title: string;
+        event_slug: string;
+        event_held_at: string;
+        person_name: string | null;
+        birth_date: string | null;
+        joined_on: string | null;
+        carer_name: string | null;
+      }
+    >();
+
+  const suspects = await suspectMap(env);
 
   return json({
     total,
     page,
     page_size: pageSize,
-    rows: rows.results.map((row) => ({
-      ...row,
-      event_title: shortEventTitle(row.event_title),
-    })),
+    rows: rows.results.map((row) => {
+      const month = birthMonth(row.birth_date);
+      const conflicts = row.person_id ? suspects.get(row.person_id) || [] : [];
+      return {
+        ...row,
+        name: row.person_name || row.name,
+        event_title: shortEventTitle(row.event_title),
+        birthday: month !== null && month === eventMonth(row.event_held_at),
+        conflicts,
+      };
+    }),
   });
 }
 
 async function apiAdminCreateRegistration(request: Request, env: Env, actor: string): Promise<Response> {
   const body = (await request.json()) as {
     event_id?: string;
+    person_id?: string;
     name?: string;
     email?: string;
     mobile?: string;
+    attended?: unknown;
   };
   const eventId = String(body.event_id || "").trim();
-  const name = String(body.name || "").trim();
+  const pickedPerson = String(body.person_id || "").trim();
+  const name = String(body.name || "").trim().replace(/\s+/g, " ");
   const email = String(body.email || "").trim();
   const mobile = String(body.mobile || "").trim();
+  const attended = body.attended === true || body.attended === 1 || body.attended === "1" ? 1 : 0;
 
   if (!eventId) return json({ error: "event_id required" }, 400);
   if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
@@ -1135,23 +1238,78 @@ async function apiAdminCreateRegistration(request: Request, env: Env, actor: str
     .first<{ id: string; title: string }>();
   if (!event) return json({ error: "event not found" }, 404);
 
+  // A picked person wins. Otherwise an exact name match reuses that person instead of making a twin.
+  let person: PersonRow | null = null;
+  if (pickedPerson) {
+    person = await env.DB.prepare(`SELECT * FROM people WHERE id = ?`).bind(pickedPerson).first<PersonRow>();
+    if (!person) return json({ error: "Person not found." }, 404);
+  } else {
+    const folded = foldName(name);
+    person =
+      (await loadPeople(env))
+        .filter((candidate) => foldName(candidate.name) === folded)
+        .sort((a, b) => personCompleteness(b) - personCompleteness(a))[0] || null;
+  }
+
+  if (person) {
+    const existing = await env.DB.prepare(`SELECT id, attended FROM registrations WHERE event_id = ? AND person_id = ?`)
+      .bind(eventId, person.id)
+      .first<{ id: string; attended: number }>();
+    if (existing) {
+      return json(
+        {
+          error: `${person.name} is already registered for this event.`,
+          existing: { id: existing.id, attended: existing.attended, name: person.name },
+        },
+        409,
+      );
+    }
+  }
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  let personId: string;
+  let savedName = name;
+  if (person) {
+    personId = person.id;
+    savedName = person.name;
+    if (mobileNorm || email) {
+      await env.DB.prepare(
+        `UPDATE people SET mobile = COALESCE(NULLIF(mobile, ''), ?), email = COALESCE(NULLIF(email, ''), ?) WHERE id = ?`,
+      )
+        .bind(mobileNorm || null, email || null, person.id)
+        .run();
+    }
+  } else {
+    personId = crypto.randomUUID();
+    await env.DB.prepare(
+      `INSERT INTO people (id, name, mobile, email, created_at) VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(personId, name, mobileNorm || null, email || null, now)
+      .run();
+  }
   await env.DB.prepare(
-    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, created_at)
-     VALUES (?, ?, ?, ?, ?, NULL, 'admin', ?)`,
+    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, person_id, created_at, attended)
+     VALUES (?, ?, ?, ?, ?, NULL, 'admin', ?, ?, ?)`,
   )
-    .bind(id, eventId, name, email || null, mobileNorm, now)
+    .bind(id, eventId, savedName, email || person?.email || null, mobileNorm || person?.mobile || "", personId, now, attended)
     .run();
 
   await recordAudit(env, {
     actor,
     action: "guest.add",
     targetId: id,
-    summary: `Added guest ${name} to ${shortEventTitle(event.title)}`,
+    summary: `Added guest ${savedName} to ${shortEventTitle(event.title)}${attended ? " as attended" : ""}`,
   });
 
-  return json({ ok: true, id, event: { id: event.id, title: event.title } });
+  return json({ ok: true, id, name: savedName, attended, person_id: personId, event: { id: event.id, title: event.title } });
+}
+
+/** The calendar day in Singapore, as YYYY-MM-DD, so "future" means the same thing everywhere. */
+function singaporeDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Singapore" }).format(d);
 }
 
 async function apiAdminUpdateRegistration(request: Request, env: Env, actor: string): Promise<Response> {
@@ -1161,39 +1319,113 @@ async function apiAdminUpdateRegistration(request: Request, env: Env, actor: str
     name?: string;
     email?: string;
     mobile?: string;
+    birth_date?: string;
+    joined_on?: string;
+    carer_name?: string;
   };
   const id = String(body.id || "").trim();
   const eventId = String(body.event_id || "").trim();
   const name = String(body.name || "").trim();
   const email = String(body.email || "").trim();
   const mobile = String(body.mobile || "").trim();
+  const birthDate = String(body.birth_date || "").trim();
+  const joinedOn = String(body.joined_on || "").trim();
+  const carerName = String(body.carer_name || "").trim();
 
   if (!id) return json({ error: "id required" }, 400);
   if (!eventId) return json({ error: "event_id required" }, 400);
   if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
   if (!isValidOptionalEmail(email)) return json({ error: "Email looks invalid." }, 400);
+  if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return json({ error: "Birth date must be YYYY-MM-DD." }, 400);
+  if (joinedOn && !/^\d{4}-\d{2}-\d{2}$/.test(joinedOn)) return json({ error: "Date joined must be YYYY-MM-DD." }, 400);
   const mobileNorm = mobile ? normalizeMobile(mobile) : "";
   if (mobile && !mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
 
-  const existing = await env.DB.prepare(`SELECT id FROM registrations WHERE id = ?`).bind(id).first<{ id: string }>();
+  const existing = await env.DB.prepare(`SELECT id, person_id, event_id, attended FROM registrations WHERE id = ?`)
+    .bind(id)
+    .first<{ id: string; person_id: string | null; event_id: string; attended: number }>();
   if (!existing) return json({ error: "Registration not found." }, 404);
 
-  const event = await env.DB.prepare(`SELECT id, title FROM events WHERE id = ?`)
+  const event = await env.DB.prepare(`SELECT id, title, held_at FROM events WHERE id = ?`)
     .bind(eventId)
-    .first<{ id: string; title: string }>();
+    .first<{ id: string; title: string; held_at: string }>();
   if (!event) return json({ error: "event not found" }, 404);
 
+  const moving = existing.event_id !== eventId;
+  let attended = existing.attended;
+  let attendanceReset = false;
+  let fromTitle = "";
+  if (moving) {
+    // The same person can only be on an event's list once.
+    if (existing.person_id) {
+      const already = await env.DB.prepare(
+        `SELECT id FROM registrations WHERE event_id = ? AND person_id = ? AND id != ?`,
+      )
+        .bind(eventId, existing.person_id, id)
+        .first<{ id: string }>();
+      if (already) {
+        return json({ error: `${name} is already registered for ${shortEventTitle(event.title)}.` }, 409);
+      }
+    }
+    fromTitle =
+      (await env.DB.prepare(`SELECT title FROM events WHERE id = ?`).bind(existing.event_id).first<{ title: string }>())
+        ?.title || "";
+    // Attendance belongs to the day it was taken. An event that has not happened yet starts fresh.
+    if (attended && singaporeDay(event.held_at) > singaporeDay(new Date().toISOString())) {
+      attended = 0;
+      attendanceReset = true;
+    }
+  }
+
   await env.DB.prepare(
-    `UPDATE registrations SET event_id = ?, name = ?, email = ?, mobile = ? WHERE id = ?`,
+    `UPDATE registrations SET event_id = ?, name = ?, email = ?, mobile = ?, attended = ? WHERE id = ?`,
   )
-    .bind(eventId, name, email || null, mobileNorm, id)
+    .bind(eventId, name, email || null, mobileNorm, attended, id)
     .run();
+
+  if (existing.person_id) {
+    await env.DB.prepare(
+      `UPDATE people SET name = ?, email = ?, mobile = ?, birth_date = ?, joined_on = ?, carer_name = ? WHERE id = ?`,
+    )
+      .bind(name, email || null, mobileNorm || null, birthDate || null, joinedOn || null, carerName || null, existing.person_id)
+      .run();
+    await env.DB.prepare(`UPDATE registrations SET name = ? WHERE person_id = ?`).bind(name, existing.person_id).run();
+  }
 
   await recordAudit(env, {
     actor,
-    action: "guest.update",
+    action: moving ? "guest.move" : "guest.update",
     targetId: id,
-    summary: `Updated guest ${name} on ${shortEventTitle(event.title)}`,
+    summary: moving
+      ? `Moved ${name} from ${shortEventTitle(fromTitle)} to ${shortEventTitle(event.title)}${attendanceReset ? " and reset attendance" : ""}`
+      : `Updated guest ${name} on ${shortEventTitle(event.title)}`,
+  });
+
+  return json({ ok: true, id, moved: moving, attendance_reset: attendanceReset });
+}
+
+async function apiAdminDeleteRegistration(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as { id?: string };
+  const id = String(body.id || "").trim();
+  if (!id) return json({ error: "id required" }, 400);
+
+  const row = await env.DB.prepare(
+    `SELECT r.id, r.name, e.title AS event_title
+     FROM registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ?`,
+  )
+    .bind(id)
+    .first<{ id: string; name: string; event_title: string }>();
+  if (!row) return json({ error: "Registration not found." }, 404);
+
+  // Only this registration goes. The person, their other registrations and any duplicate flags stay.
+  await env.DB.prepare(`DELETE FROM registrations WHERE id = ?`).bind(id).run();
+
+  await recordAudit(env, {
+    actor,
+    action: "guest.remove",
+    targetId: id,
+    summary: `Removed ${row.name} from ${shortEventTitle(row.event_title)}`,
   });
 
   return json({ ok: true, id });
@@ -1227,6 +1459,547 @@ async function apiAdminSetAttendance(request: Request, env: Env, actor: string):
   });
 
   return json({ ok: true, id, attended });
+}
+
+async function loadPeople(env: Env): Promise<PersonRow[]> {
+  const rows = await env.DB.prepare(`SELECT * FROM people`).all<PersonRow>();
+  return rows.results;
+}
+
+async function dismissedPairs(env: Env): Promise<Set<string>> {
+  const rows = await env.DB.prepare(`SELECT person_a, person_b FROM person_links WHERE status = 'distinct'`).all<{
+    person_a: string;
+    person_b: string;
+  }>();
+  return new Set(rows.results.map((row) => `${row.person_a}|${row.person_b}`));
+}
+
+function isDismissed(dismissed: Set<string>, a: string, b: string): boolean {
+  const [x, y] = linkPair(a, b);
+  return dismissed.has(`${x}|${y}`);
+}
+
+function suspectsFor(person: PersonRow, people: PersonRow[], dismissed: Set<string>): PersonRow[] {
+  return people
+    .filter((other) => other.id !== person.id && !isDismissed(dismissed, person.id, other.id))
+    .filter((other) => namesSuspect(person.name, other.name) || (person.mobile && other.mobile && mobilesMatch(person.mobile, other.mobile)))
+    .sort((a, b) => personCompleteness(b) - personCompleteness(a));
+}
+
+async function suspectMap(env: Env): Promise<Map<string, { id: string; name: string }[]>> {
+  const people = await loadPeople(env);
+  const dismissed = await dismissedPairs(env);
+  const map = new Map<string, { id: string; name: string }[]>();
+  for (const person of people) {
+    const matches = suspectsFor(person, people, dismissed);
+    if (matches.length) map.set(person.id, matches.map((match) => ({ id: match.id, name: match.name })));
+  }
+  return map;
+}
+
+async function apiSearchPeople(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const q = foldName(url.searchParams.get("q") || "");
+  const eventId = (url.searchParams.get("event_id") || "").trim();
+  if (q.length < 2) return json({ people: [] });
+  const digits = q.replace(/\D/g, "");
+  const people = await loadPeople(env);
+  const matches = people
+    .filter((person) => foldName(person.name).includes(q) || (digits && (person.mobile || "").replace(/\D/g, "").includes(digits)))
+    .sort(
+      (a, b) =>
+        Number(foldName(b.name).startsWith(q)) - Number(foldName(a.name).startsWith(q)) || a.name.localeCompare(b.name),
+    )
+    .slice(0, 8);
+  if (!matches.length) return json({ people: [] });
+
+  const stats = await personStats(env);
+  const onList = new Map<string, { id: string; attended: number }>();
+  if (eventId) {
+    const regs = await env.DB.prepare(
+      `SELECT id, person_id, attended FROM registrations WHERE event_id = ? AND person_id IS NOT NULL`,
+    )
+      .bind(eventId)
+      .all<{ id: string; person_id: string; attended: number }>();
+    for (const reg of regs.results) onList.set(reg.person_id, { id: reg.id, attended: reg.attended });
+  }
+  return json({
+    people: matches.map((person) => ({
+      id: person.id,
+      name: person.name,
+      mobile: person.mobile || "",
+      birth_date: person.birth_date,
+      visits: stats.get(person.id)?.attended ?? 0,
+      registration: onList.get(person.id) || null,
+    })),
+  });
+}
+
+async function apiMergePeople(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as { keeper_id?: string; other_id?: string };
+  const keeperId = String(body.keeper_id || "").trim();
+  const otherId = String(body.other_id || "").trim();
+  if (!keeperId || !otherId || keeperId === otherId) return json({ error: "Two different people are required." }, 400);
+  const keeper = await env.DB.prepare(`SELECT * FROM people WHERE id = ?`).bind(keeperId).first<PersonRow>();
+  const other = await env.DB.prepare(`SELECT * FROM people WHERE id = ?`).bind(otherId).first<PersonRow>();
+  if (!keeper || !other) return json({ error: "Person not found." }, 404);
+
+  await env.DB.prepare(`UPDATE registrations SET person_id = ?, name = ? WHERE person_id = ?`)
+    .bind(keeper.id, keeper.name, other.id)
+    .run();
+  await env.DB.prepare(
+    `UPDATE people
+     SET mobile = COALESCE(NULLIF(mobile, ''), ?),
+         email = COALESCE(NULLIF(email, ''), ?),
+         birth_date = COALESCE(birth_date, ?),
+         joined_on = COALESCE(joined_on, ?),
+         carer_name = COALESCE(NULLIF(carer_name, ''), ?),
+         carer_id = COALESCE(carer_id, ?)
+     WHERE id = ?`,
+  )
+    .bind(other.mobile, other.email, other.birth_date, other.joined_on, other.carer_name, other.carer_id === keeper.id ? null : other.carer_id, keeper.id)
+    .run();
+  await env.DB.prepare(`UPDATE people SET carer_id = ? WHERE carer_id = ?`).bind(keeper.id, other.id).run();
+  await env.DB.prepare(`DELETE FROM person_links WHERE person_a = ? OR person_b = ?`).bind(other.id, other.id).run();
+  await env.DB.prepare(`DELETE FROM people WHERE id = ?`).bind(other.id).run();
+
+  await recordAudit(env, {
+    actor,
+    action: "person.merge",
+    targetId: keeper.id,
+    summary: `Merged ${other.name} into ${keeper.name}`,
+  });
+  return json({ ok: true, id: keeper.id });
+}
+
+async function apiUpdatePerson(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as {
+    id?: string;
+    name?: string;
+    email?: string;
+    mobile?: string;
+    birth_date?: string;
+    joined_on?: string;
+    carer_name?: string;
+  };
+  const id = String(body.id || "").trim();
+  const name = String(body.name || "").trim().replace(/\s+/g, " ");
+  const email = String(body.email || "").trim();
+  const mobile = String(body.mobile || "").trim();
+  const birthDate = String(body.birth_date || "").trim();
+  const joinedOn = String(body.joined_on || "").trim();
+  const carerName = String(body.carer_name || "").trim().replace(/\s+/g, " ");
+  const validDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+
+  if (!id) return json({ error: "id required" }, 400);
+  if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
+  if (!isValidOptionalEmail(email)) return json({ error: "Email looks invalid." }, 400);
+  if (birthDate && !validDay(birthDate)) return json({ error: "Birth date must be a real date." }, 400);
+  if (joinedOn && !validDay(joinedOn)) return json({ error: "Date joined must be a real date." }, 400);
+  if (carerName.length > 120) return json({ error: "Carer name is too long." }, 400);
+  const mobileNorm = mobile ? normalizeMobile(mobile) : "";
+  if (mobile && !mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
+
+  const person = await env.DB.prepare(`SELECT id, name FROM people WHERE id = ?`).bind(id).first<{ id: string; name: string }>();
+  if (!person) return json({ error: "Person not found." }, 404);
+
+  await env.DB.prepare(
+    `UPDATE people SET name = ?, email = ?, mobile = ?, birth_date = ?, joined_on = ?, carer_name = ? WHERE id = ?`,
+  )
+    .bind(name, email || null, mobileNorm || null, birthDate || null, joinedOn || null, carerName || null, id)
+    .run();
+  // Registrations keep their own copy. Push the name everywhere, and contact details only when filled in,
+  // so clearing a field here never wipes what a past registration recorded.
+  await env.DB.prepare(
+    `UPDATE registrations SET name = ?, email = COALESCE(?, email), mobile = COALESCE(?, mobile) WHERE person_id = ?`,
+  )
+    .bind(name, email || null, mobileNorm || null, id)
+    .run();
+
+  await recordAudit(env, {
+    actor,
+    action: "person.update",
+    targetId: id,
+    summary: name === person.name ? `Updated profile of ${name}` : `Updated profile of ${person.name}, now ${name}`,
+  });
+  return json({ ok: true, id, name });
+}
+
+async function apiDistinctPeople(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as { person_a?: string; person_b?: string };
+  const a = String(body.person_a || "").trim();
+  const b = String(body.person_b || "").trim();
+  if (!a || !b || a === b) return json({ error: "Two different people are required." }, 400);
+  const [left, right] = linkPair(a, b);
+  await env.DB.prepare(
+    `INSERT INTO person_links (person_a, person_b, status, created_at) VALUES (?, ?, 'distinct', ?)
+     ON CONFLICT(person_a, person_b) DO UPDATE SET status = 'distinct'`,
+  )
+    .bind(left, right, new Date().toISOString())
+    .run();
+  await recordAudit(env, {
+    actor,
+    action: "person.distinct",
+    targetId: left,
+    summary: "Marked two people as different",
+  });
+  return json({ ok: true });
+}
+
+type PersonStats = { registered: number; attended: number; last_attended: string | null };
+
+async function personStats(env: Env): Promise<Map<string, PersonStats>> {
+  const rows = await env.DB.prepare(
+    `SELECT r.person_id AS person_id,
+            COUNT(*) AS registered,
+            COALESCE(SUM(r.attended), 0) AS attended,
+            MAX(CASE WHEN r.attended = 1 THEN e.held_at END) AS last_attended
+     FROM registrations r
+     JOIN events e ON e.id = r.event_id
+     WHERE r.person_id IS NOT NULL
+     GROUP BY r.person_id`,
+  ).all<{ person_id: string; registered: number; attended: number; last_attended: string | null }>();
+  return new Map(
+    rows.results.map((row) => [
+      row.person_id,
+      { registered: row.registered, attended: row.attended, last_attended: row.last_attended },
+    ]),
+  );
+}
+
+const NO_STATS: PersonStats = { registered: 0, attended: 0, last_attended: null };
+
+function personInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  const first = [...parts[0]][0] || "";
+  const last = parts.length > 1 ? [...parts[parts.length - 1]][0] || "" : "";
+  return (first + last).toUpperCase();
+}
+
+function monthYear(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", month: "short", year: "numeric" }).format(d);
+}
+
+function plainDate(value: string): string {
+  const d = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return value;
+  return new Intl.DateTimeFormat("en-SG", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }).format(d).replace("Sept", "Sep");
+}
+
+function attendedLine(stats: PersonStats): string {
+  if (!stats.registered) return "No visits yet";
+  const last = stats.last_attended ? ` · last ${monthYear(stats.last_attended)}` : "";
+  return `${stats.attended} attended · ${stats.registered} registered${last}`;
+}
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function dayMonth(value: string): string {
+  const d = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return "";
+  // en-SG writes "Sept"; the rest of the app uses three letters.
+  return new Intl.DateTimeFormat("en-SG", { timeZone: "UTC", day: "numeric", month: "short" }).format(d).replace("Sept", "Sep");
+}
+
+const GIFT_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="8.5" width="17" height="4" rx="1"/><path d="M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5M12 8.5v12M12 8.5C10.5 4.5 6.5 4.5 7 6.8c.3 1.4 5 1.7 5 1.7zm0 0c1.5-4 5.5-4 5-1.7-.3 1.4-5 1.7-5 1.7z"/></svg>`;
+
+/** Prev, page numbers and next. Rendered above and below the list, and kept in step by people.js. */
+function pagerNav(): string {
+  const arrow = (path: string, label: string, hook: string) =>
+    `<button type="button" class="pp-page-btn pp-page-arrow" ${hook} aria-label="${label}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg></button>`;
+  return `<div class="pp-pager-nav" data-pp-nav hidden>
+    ${arrow("m15 5-7 7 7 7", "Previous page", "data-pp-prev")}
+    <span class="pp-pages" data-pp-pages></span>
+    <span class="pp-page-of" data-pp-page-of></span>
+    ${arrow("m9 5 7 7-7 7", "Next page", "data-pp-next")}
+  </div>`;
+}
+
+function personRow(person: PersonRow, stats: PersonStats, flagged: boolean): string {
+  const folded = foldName(person.name);
+  const digits = (person.mobile || "").replace(/\D/g, "");
+  const sub = [person.mobile, person.email].filter(Boolean).join(" · ") || "No contact details";
+  const last = stats.last_attended ? new Date(stats.last_attended).getTime() || 0 : 0;
+  const month = birthMonth(person.birth_date) ?? 0;
+  const birthday = person.birth_date ? dayMonth(person.birth_date) : "";
+  return `<li class="pp-row" data-name="${escapeHtml(folded)}" data-digits="${digits}" data-attended="${stats.attended}" data-last="${last}" data-month="${month}">
+    <a class="pp-link" href="/admin/people?person=${encodeURIComponent(person.id)}">
+      <span class="pp-avatar" aria-hidden="true">${escapeHtml(personInitials(person.name))}</span>
+      <span class="pp-main">
+        <span class="pp-name">${escapeHtml(person.name)}${flagged ? `<span class="pp-flag">Possible duplicate</span>` : ""}${birthday ? `<span class="pp-bday" title="Birthday ${escapeHtml(birthday)}">${GIFT_SVG}${escapeHtml(birthday)}</span>` : ""}</span>
+        <span class="pp-sub">${escapeHtml(sub)}</span>
+      </span>
+      <span class="pp-stat"><strong>${stats.attended}</strong><span>attended</span>${stats.last_attended ? `<em>Last ${escapeHtml(monthYear(stats.last_attended))}</em>` : ""}</span>
+    </a>
+  </li>`;
+}
+
+function personFactsList(person: PersonRow): string {
+  const facts: [string, string | null][] = [
+    ["Mobile", person.mobile],
+    ["Email", person.email],
+    ["Birthday", person.birth_date ? plainDate(person.birth_date) : null],
+    ["Joined", person.joined_on ? plainDate(person.joined_on) : null],
+    ["Carer", person.carer_name],
+  ];
+  return `<dl class="pp-facts">${facts
+    .map(([label, value]) =>
+      value
+        ? `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`
+        : `<div><dt>${label}</dt><dd class="is-empty">Not recorded</dd></div>`,
+    )
+    .join("")}</dl>`;
+}
+
+async function renderPeople(request: Request, env: Env): Promise<Response> {
+  const focusId = new URL(request.url).searchParams.get("person") || "";
+  const people = await loadPeople(env);
+  const dismissed = await dismissedPairs(env);
+  const stats = await personStats(env);
+  const byId = new Map(people.map((person) => [person.id, person]));
+  const statsFor = (id: string) => stats.get(id) || NO_STATS;
+  const focus = byId.get(focusId) || null;
+
+  const body = focus
+    ? await renderPersonDetail(env, focus, people, dismissed, statsFor)
+    : renderPeopleDirectory(people, dismissed, statsFor);
+
+  return html(adminShell(env, request, "People", body, "people"));
+}
+
+function renderPeopleDirectory(
+  people: PersonRow[],
+  dismissed: Set<string>,
+  statsFor: (id: string) => PersonStats,
+): string {
+  // Group suspected pairs under the thinner profile, so "Jenn" reads once instead of ten times.
+  const groups = new Map<string, { thinner: PersonRow; fuller: PersonRow[] }>();
+  const seen = new Set<string>();
+  for (const person of people) {
+    for (const other of suspectsFor(person, people, dismissed)) {
+      const [a, b] = linkPair(person.id, other.id);
+      const key = `${a}|${b}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const fuller = personCompleteness(person) >= personCompleteness(other) ? person : other;
+      const thinner = fuller.id === person.id ? other : person;
+      const group = groups.get(thinner.id) || { thinner, fuller: [] };
+      group.fuller.push(fuller);
+      groups.set(thinner.id, group);
+    }
+  }
+  const flagged = new Set<string>();
+  for (const { thinner, fuller } of groups.values()) {
+    flagged.add(thinner.id);
+    for (const person of fuller) flagged.add(person.id);
+  }
+
+  const groupRows = [...groups.values()]
+    .sort((x, y) => foldName(x.thinner.name).localeCompare(foldName(y.thinner.name)))
+    .map(({ thinner, fuller }) => {
+      const shown = fuller.slice(0, 3).map((person) => `<b>${escapeHtml(person.name)}</b>`).join(", ");
+      const more = fuller.length > 3 ? ` and ${fuller.length - 3} more` : "";
+      return `<li>
+        <span class="pp-pair-text"><b>${escapeHtml(thinner.name)}</b> may be ${shown}${more}</span>
+        <a class="btn btn-ghost btn-sm" href="/admin/people?person=${encodeURIComponent(thinner.id)}">Review</a>
+      </li>`;
+    })
+    .join("");
+
+  const dupes = groups.size
+    ? `<details class="admin-panel pp-dupes">
+        <summary><span>${groups.size} possible duplicate${groups.size === 1 ? "" : "s"} to review</span></summary>
+        <ul class="pp-pairs">${groupRows}</ul>
+      </details>`
+    : "";
+
+  const sorted = [...people].sort((a, b) => foldName(a.name).localeCompare(foldName(b.name)));
+  const attendedEver = sorted.filter((person) => statsFor(person.id).attended > 0).length;
+  const rows = sorted.map((person) => personRow(person, statsFor(person.id), flagged.has(person.id))).join("");
+
+  // Birth month filter. Labels stay plain month names so nothing reads like a date; the result line shows the count.
+  const nowMonth = eventMonth(new Date().toISOString());
+  const monthOptions = [
+    `<option value="">Any birth month</option>`,
+    ...MONTH_NAMES.map((name, i) => `<option value="${i + 1}">${name}${nowMonth === i + 1 ? " (this month)" : ""}</option>`),
+    `<option value="0">Not recorded</option>`,
+  ].join("");
+
+  return `
+    <div class="pp-layout">
+      <header class="admin-pagehead">
+        <h1>People</h1>
+        <p>${people.length} ${people.length === 1 ? "person" : "people"} have registered, and ${attendedEver} ${attendedEver === 1 ? "has" : "have"} attended at least once. Open a name to see their history.</p>
+      </header>
+      ${dupes}
+      <div class="pp-tools">
+        <div class="reg-filters">
+          <label class="reg-search">
+            <span class="visually-hidden">Search people</span>
+            <svg class="reg-search-icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+            <input id="pp-search" type="search" placeholder="Search name or mobile" autocomplete="off" />
+            <button type="button" class="reg-search-clear" id="pp-search-clear" aria-label="Clear search" hidden>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+          </label>
+        </div>
+        <label class="pp-month">
+          <span class="visually-hidden">Birth month</span>
+          <select id="pp-month">${monthOptions}</select>
+        </label>
+        <div class="pp-sort" role="group" aria-label="Sort people">
+          <button type="button" data-pp-sort="name" aria-pressed="true">A–Z</button>
+          <button type="button" data-pp-sort="attended" aria-pressed="false">Most visits</button>
+          <button type="button" data-pp-sort="recent" aria-pressed="false">Recent</button>
+        </div>
+      </div>
+      <div class="pp-meta">
+        <p id="pp-count" class="reg-count" aria-live="polite">${people.length} people</p>
+        ${pagerNav()}
+      </div>
+      <ul id="pp-list" class="pp-list">${rows}</ul>
+      <p id="pp-empty" class="pp-empty" hidden>No one matches those filters.</p>
+      <nav id="pp-pager" class="pp-pager" aria-label="Pagination" hidden>
+        <p id="pp-range" class="pp-range" aria-live="polite"></p>
+        ${pagerNav()}
+      </nav>
+    </div>
+    <script src="/admin/people.js" defer></script>`;
+}
+
+async function renderPersonDetail(
+  env: Env,
+  focus: PersonRow,
+  people: PersonRow[],
+  dismissed: Set<string>,
+  statsFor: (id: string) => PersonStats,
+): Promise<string> {
+  const focusStats = statsFor(focus.id);
+  const matches = suspectsFor(focus, people, dismissed);
+  const history = await env.DB.prepare(
+    `SELECT e.title, e.held_at, r.attended
+     FROM registrations r
+     JOIN events e ON e.id = r.event_id
+     WHERE r.person_id = ?
+     ORDER BY e.held_at DESC`,
+  )
+    .bind(focus.id)
+    .all<{ title: string; held_at: string; attended: number }>();
+
+  const historyList = history.results.length
+    ? `<ul class="pp-history">${history.results
+        .map(
+          (row) => `<li>
+            <span>${escapeHtml(shortEventTitle(row.title))}</span>
+            <span class="pp-pill${row.attended ? " is-yes" : ""}">${row.attended ? "Attended" : "Registered"}</span>
+          </li>`,
+        )
+        .join("")}</ul>`
+    : `<p class="ef-hint">Not registered for any Tambayan yet.</p>`;
+
+  const cards = matches
+    .map((match) => {
+      const matchIsFuller = personCompleteness(match) >= personCompleteness(focus);
+      const keeper = matchIsFuller ? match : focus;
+      const other = matchIsFuller ? focus : match;
+      const moved = statsFor(other.id).registered;
+      const sub = [match.mobile, match.email].filter(Boolean).join(" · ") || "No contact details";
+      return `<article class="pp-card">
+        <div class="pp-card-head">
+          <span class="pp-avatar" aria-hidden="true">${escapeHtml(personInitials(match.name))}</span>
+          <div class="pp-main">
+            <a class="pp-name" href="/admin/people?person=${encodeURIComponent(match.id)}">${escapeHtml(match.name)}</a>
+            <span class="pp-sub">${escapeHtml(sub)}</span>
+            <span class="pp-sub">${escapeHtml(attendedLine(statsFor(match.id)))}</span>
+          </div>
+          <span class="pp-pill">${matchIsFuller ? "Fuller profile" : "Thinner profile"}</span>
+        </div>
+        <p class="pp-card-note">Merging keeps <b>${escapeHtml(keeper.name)}</b>. ${moved ? `${moved} registration${moved === 1 ? "" : "s"} move across, and the` : "The"} duplicate <b>${escapeHtml(other.name)}</b> is removed.</p>
+        <div class="pp-card-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-merge-keeper="${escapeHtml(keeper.id)}" data-merge-other="${escapeHtml(other.id)}" data-keeper-name="${escapeHtml(keeper.name)}" data-other-name="${escapeHtml(other.name)}" data-moved="${moved}">Merge into ${escapeHtml(keeper.name)}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-distinct-a="${escapeHtml(focus.id)}" data-distinct-b="${escapeHtml(match.id)}" data-a-name="${escapeHtml(focus.name)}" data-b-name="${escapeHtml(match.name)}">Not the same</button>
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  return `
+    <div class="pp-layout">
+      <a class="pp-back" href="/admin/people">← All people</a>
+      <section class="admin-panel pp-profile">
+        <div class="pp-profile-head">
+          <span class="pp-avatar pp-avatar--lg" aria-hidden="true">${escapeHtml(personInitials(focus.name))}</span>
+          <div>
+            <h1 class="pp-title">${escapeHtml(focus.name)}</h1>
+            <p class="pp-sub">${escapeHtml(attendedLine(focusStats))}</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm pp-edit-btn" id="pp-edit-open">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="m14.5 7.5 3 3"/></svg>
+            Edit
+          </button>
+        </div>
+        ${personFactsList(focus)}
+        <p id="people-status" class="form-status" role="status"></p>
+      </section>
+      <section class="admin-panel">
+        <div class="admin-panel-head">
+          <h2>Attendance</h2>
+          <span class="admin-panel-meta">${focusStats.attended} of ${focusStats.registered}</span>
+        </div>
+        ${historyList}
+      </section>
+      ${
+        matches.length
+          ? `<section class="admin-panel">
+              <div class="admin-panel-head">
+                <h2>Possible duplicates</h2>
+                <span class="admin-panel-meta">${matches.length}</span>
+              </div>
+              <div class="pp-cards">${cards}</div>
+            </section>`
+          : `<p class="ef-hint pp-alone">No other profiles look like this one.</p>`
+      }
+    </div>
+    <div class="reg-modal" id="pp-edit-modal" hidden>
+      <button type="button" class="reg-modal-backdrop" data-dialog-cancel tabindex="-1" aria-label="Close"></button>
+      <div class="reg-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pp-edit-title">
+        <div class="reg-modal-head">
+          <h2 id="pp-edit-title">Edit profile</h2>
+          <button type="button" class="reg-modal-close reg-modal-x" data-dialog-cancel aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <form class="form" id="person-edit-form">
+          <input type="hidden" name="id" value="${escapeHtml(focus.id)}" />
+          <div class="reg-form-grid">
+            <label class="is-wide"><span>Name</span><input name="name" required maxlength="120" autocomplete="off" value="${escapeHtml(focus.name)}" /></label>
+            <label><span>Mobile</span><input name="mobile" maxlength="20" inputmode="tel" autocomplete="off" value="${escapeHtml(focus.mobile || "")}" /></label>
+            <label><span>Email</span><input name="email" type="email" maxlength="200" autocomplete="off" value="${escapeHtml(focus.email || "")}" /></label>
+            <label><span>Birth date</span><input name="birth_date" type="date" value="${escapeHtml(focus.birth_date || "")}" /></label>
+            <label><span>Date joined</span><input name="joined_on" type="date" value="${escapeHtml(focus.joined_on || "")}" /></label>
+            <label class="is-wide"><span>Carer</span><input name="carer_name" maxlength="120" autocomplete="off" value="${escapeHtml(focus.carer_name || "")}" /></label>
+          </div>
+          <div class="admin-form-actions">
+            <button class="btn btn-primary" type="submit">Save changes</button>
+            <button type="button" class="btn btn-ghost" data-dialog-cancel>Cancel</button>
+          </div>
+          <p id="person-edit-status" class="form-status" role="status"></p>
+        </form>
+      </div>
+    </div>
+    <div class="reg-modal pp-confirm" id="pp-confirm" hidden>
+      <button type="button" class="reg-modal-backdrop" data-dialog-cancel tabindex="-1" aria-label="Cancel"></button>
+      <div class="reg-modal-dialog" role="alertdialog" aria-modal="true" aria-labelledby="pp-confirm-title" aria-describedby="pp-confirm-body">
+        <h2 class="pp-confirm-title" id="pp-confirm-title"></h2>
+        <p class="pp-confirm-body" id="pp-confirm-body"></p>
+        <div class="admin-form-actions pp-confirm-actions">
+          <button type="button" class="btn btn-ghost" id="pp-confirm-cancel" data-dialog-cancel>Cancel</button>
+          <button type="button" class="btn btn-primary" id="pp-confirm-ok">Confirm</button>
+        </div>
+      </div>
+    </div>
+    <script src="/admin/people.js" defer></script>`;
 }
 
 async function handleAdminGallery(request: Request, env: Env): Promise<Response> {

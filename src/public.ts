@@ -15,11 +15,14 @@ import {
   publicRegistrationState,
   registrationCompleteness,
   sameRegistration,
+  foldName,
+  mobilesMatch,
   siteBase,
   youtubeEmbedUrl,
   youtubeThumb,
   type EventRow,
   type GalleryImageRow,
+  type PersonRow,
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
@@ -356,6 +359,28 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
   );
 }
 
+async function findOrCreatePerson(
+  env: Env,
+  incoming: { name: string; email: string | null; mobile: string },
+): Promise<string> {
+  const people = await env.DB.prepare(`SELECT * FROM people`).all<PersonRow>();
+  const byMobile = people.results.find((person) => person.mobile && mobilesMatch(person.mobile, incoming.mobile));
+  if (byMobile) return byMobile.id;
+  const exact = people.results.find((person) => {
+    if (foldName(person.name) !== foldName(incoming.name)) return false;
+    if (!person.mobile) return true;
+    return mobilesMatch(person.mobile, incoming.mobile);
+  });
+  if (exact) return exact.id;
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO people (id, name, mobile, email, created_at) VALUES (?, ?, ?, ?, ?)`,
+  )
+    .bind(id, incoming.name, incoming.mobile, incoming.email, new Date().toISOString())
+    .run();
+  return id;
+}
+
 export async function handleRegisterApi(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -415,6 +440,11 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
       )
         .bind(merged.name, merged.email, merged.mobile, new Date().toISOString(), keeper.id)
         .run();
+      if (keeper.person_id) {
+        await env.DB.prepare(`UPDATE people SET name = ?, email = ?, mobile = ? WHERE id = ?`)
+          .bind(merged.name, merged.email, merged.mobile, keeper.person_id)
+          .run();
+      }
     }
     return json({
       ok: true,
@@ -426,11 +456,12 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const personId = await findOrCreatePerson(env, { name, email: email || null, mobile: mobileNorm });
   await env.DB.prepare(
-    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'public', ?)`,
+    `INSERT INTO registrations (id, event_id, name, email, mobile, privacy_policy_agreed_at, source, person_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'public', ?, ?)`,
   )
-    .bind(id, event.id, name, email || null, mobileNorm, now, now)
+    .bind(id, event.id, name, email || null, mobileNorm, now, personId, now)
     .run();
 
   return json({ ok: true, already: false, id, event: { id: event.id, title: event.title } });

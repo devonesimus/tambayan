@@ -31,8 +31,21 @@ export type RegistrationRow = {
   email: string | null;
   mobile: string;
   privacy_policy_agreed_at: string | null;
-  source: "public" | "admin";
+  source: "public" | "admin" | "import";
   attended: number;
+  person_id: string | null;
+  created_at: string;
+};
+
+export type PersonRow = {
+  id: string;
+  name: string;
+  mobile: string | null;
+  email: string | null;
+  birth_date: string | null;
+  joined_on: string | null;
+  carer_id: string | null;
+  carer_name: string | null;
   created_at: string;
 };
 
@@ -244,7 +257,65 @@ export function isValidOptionalEmail(email: string): boolean {
 }
 
 export function foldName(name: string): string {
-  return name.trim().replace(/\s+/g, " ").toLowerCase();
+  return name
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+/** The shorter full name sits inside the longer one. A shared first name alone does not count. */
+export function namesSuspect(a: string, b: string): boolean {
+  const fa = foldName(a);
+  const fb = foldName(b);
+  if (!fa || !fb || fa === fb) return false;
+  const [short, long] = fa.length <= fb.length ? [fa, fb] : [fb, fa];
+  if (short.length < 4) return false;
+  if (long.indexOf(short) !== 0) return false;
+  const next = long[short.length];
+  return next === " " || (next !== undefined && next !== " " && /[a-z0-9]/.test(next));
+}
+
+export function personCompleteness(row: {
+  name: string;
+  email: string | null;
+  mobile: string | null;
+  birth_date?: string | null;
+  joined_on?: string | null;
+  carer_name?: string | null;
+}): number {
+  let score = registrationCompleteness({
+    name: row.name,
+    email: row.email,
+    mobile: row.mobile || "",
+  });
+  if (row.birth_date) score += 4;
+  if (row.joined_on) score += 2;
+  if (row.carer_name?.trim()) score += 2;
+  return score;
+}
+
+export function linkPair(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
+}
+
+export function birthMonth(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})/.exec(value);
+  if (!match) return null;
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12 ? month : null;
+}
+
+export function eventMonth(iso: string): number | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const month = new Intl.DateTimeFormat("en-SG", {
+    timeZone: "Asia/Singapore",
+    month: "numeric",
+  }).format(d);
+  const n = Number(month);
+  return n >= 1 && n <= 12 ? n : null;
 }
 
 function mobileDigits(mobile: string): string {
