@@ -11,12 +11,16 @@ import {
   isValidOptionalEmail,
   json,
   normalizeMobile,
+  preferRegistrationField,
   publicRegistrationState,
+  registrationCompleteness,
+  sameRegistration,
   siteBase,
   youtubeEmbedUrl,
   youtubeThumb,
   type EventRow,
   type GalleryImageRow,
+  type RegistrationRow,
   type VideoRow,
 } from "./helpers";
 import { layout, shareButtons } from "./layout";
@@ -35,6 +39,9 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   const when = event ? formatEventWhen(event.held_at) : "Every last Sunday, 2–4 PM";
   const headline = event ? formatEventHeadline(event.held_at) : "EVERY LAST SUNDAY · 2–4 PM";
   const where = event ? eventVenue(event, env) : env.DEFAULT_LOCATION;
+  // Organisers' announcement for this event, shown in the hero when they wrote one.
+  const announcementTitle = (event?.announcement_title || "").trim();
+  const announcementBody = event ? eventAnnouncementBody(event) : "";
 
   let ctaLabel = "Coming soon";
   let ctaHref: string | null = null;
@@ -79,11 +86,17 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
           />
         </div>
         <div class="home-hero-panel">
-          <h1 id="hero-date" class="hero-date">${escapeHtml(headline)}</h1>
-          <p class="hero-line">Every last Sunday — fellowship, worship &amp; community</p>
-          <p class="hero-venue">${escapeHtml(where)}</p>
-          <p class="hero-note">Free to join</p>
-          <div class="hero-cta">${cta}</div>
+          <div class="hero-head">
+            ${announcementTitle ? `<p class="hero-kicker">${escapeHtml(announcementTitle)}</p>` : ""}
+            <h1 id="hero-date" class="hero-date">${escapeHtml(headline)}</h1>
+          </div>
+          ${
+            announcementBody
+              ? `<p class="hero-line hero-announcement">${escapeHtml(announcementBody)}</p>`
+              : `<p class="hero-line">Every last Sunday — fellowship, worship &amp; community</p>`
+          }
+          <p class="hero-venue">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
+          <div class="hero-cta">${cta}<span class="hero-free"><svg class="hero-free-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V14a2 2 0 0 0 0-4z"/><path d="M14 6.5v11" stroke-dasharray="1.6 2"/></svg><span>Free to join</span></span></div>
           <div class="hero-secondary">
             <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
             <span class="share-sep" aria-hidden="true">·</span>
@@ -194,6 +207,28 @@ async function renderPhotoRow(env: Env): Promise<string> {
     </section>`;
 }
 
+const regIcons: Record<string, string> = {
+  calendar: `<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>`,
+  pin: `<path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>`,
+};
+
+function regIcon(name: string): string {
+  return `<svg class="reg-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${regIcons[name] || ""}</svg>`;
+}
+
+/** Brand-coloured confetti for the sign-up confirmation; each piece flies along its own angle. */
+function confettiPieces(): string {
+  const colors = ["#eaa12f", "#f9d21d", "#d33444", "#20419c", "#27346b"];
+  return Array.from({ length: 18 }, (_, i) => {
+    const angle = (i / 18) * Math.PI * 2 + (i % 2 ? 0.18 : -0.12);
+    const dist = 90 + (i % 3) * 28;
+    const x = Math.round(Math.cos(angle) * dist);
+    const y = Math.round(Math.sin(angle) * dist * 0.75) - 20;
+    const spin = (i % 2 ? 1 : -1) * (160 + i * 23);
+    return `<span style="--x:${x}px;--y:${y}px;--r:${spin}deg;--c:${colors[i % colors.length]};--d:${(i % 4) * 40}ms"></span>`;
+  }).join("");
+}
+
 export async function renderRegister(request: Request, env: Env): Promise<Response> {
   const openEvent = await getOpenEvent(env.DB);
   const state = publicRegistrationState(openEvent);
@@ -229,10 +264,31 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
 
   const formBlock =
     state === "open" && openEvent
-      ? `<div class="page-meta">
-        <p class="page-meta-primary">${escapeHtml(openEvent.title)}</p>
-        <p class="page-meta-secondary">${escapeHtml(when)}</p>
-        <p class="page-meta-venue">${escapeHtml(where)}</p>
+      ? `<div class="register-card">
+      <div class="register-event">
+        <p class="register-event-title">${escapeHtml(openEvent.title)}</p>
+        <p class="register-event-line">${regIcon("calendar")}<span>${escapeHtml(when)}</span></p>
+        <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
+      </div>
+      <div id="register-panel">
+      <div id="register-confirm" class="register-confirm" role="status" aria-live="polite" hidden>
+        <div class="reg-stage" aria-hidden="true">
+          <span class="reg-trail"></span>
+          <img class="reg-plane" src="/brand/airplane-red-flipped.svg" alt="" width="54" height="36" />
+          <div class="reg-burst">${confettiPieces()}</div>
+          <svg class="reg-check" viewBox="0 0 52 52">
+            <circle class="reg-check-ring" cx="26" cy="26" r="23" />
+            <path class="reg-check-tick" d="M15 27.5l7.2 7L37.5 19" />
+          </svg>
+        </div>
+        <p class="register-confirm-kicker" id="register-confirm-kicker"></p>
+        <p class="register-confirm-body" id="register-status"></p>
+        <div class="reg-done-event" id="reg-done-event">
+          <p class="reg-done-event-title">${escapeHtml(openEvent.title)}</p>
+          <p class="register-event-line">${regIcon("calendar")}<span>${escapeHtml(when)}</span></p>
+          <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
+        </div>
+        <a class="btn btn-ghost reg-done-cal" id="register-confirm-cal" href="#" download="ofw-tambayan.ics">${regIcon("calendar")}Add to calendar</a>
       </div>
       <form id="register-form" class="form form-register" method="post" action="/api/register" novalidate>
         <label>
@@ -245,20 +301,25 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
         </label>
         <label>
           <span class="field-label">Mobile <em>required</em> <span class="field-hint" data-for="mobile"></span></span>
-          <input name="mobile" type="tel" autocomplete="tel" required placeholder="+65…" maxlength="20" />
+          <input name="mobile" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+65…" maxlength="20" />
         </label>
         <label class="check">
           <input name="privacy" type="checkbox" value="1" required />
           <span class="field-label">I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> <span class="field-hint" data-for="privacy"></span></span>
         </label>
         <button class="btn btn-cta" type="submit">Register</button>
-        <p id="register-status" class="form-status" role="status" aria-live="polite"></p>
       </form>
+      </div>
+      </div>
       <script src="/register.js" defer></script>`
       : statusPanel;
 
   const body = `
-    <section class="page-section register-page">
+    <section class="page-section register-page"${
+      state === "open" && openEvent
+        ? ` data-event-title="${escapeHtml(openEvent.title)}" data-event-start="${escapeHtml(openEvent.held_at)}" data-event-when="${escapeHtml(when)}" data-event-venue="${escapeHtml(where)}"`
+        : ""
+    }>
       <header class="page-intro">
         <h1>Register</h1>
         <p class="lede">${
@@ -329,6 +390,40 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
   if (!mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
   if (!privacy) return json({ error: "Please accept the Privacy Policy." }, 400);
 
+  const incoming = { name, email, mobile: mobileNorm };
+  const existing = await env.DB.prepare(`SELECT * FROM registrations WHERE event_id = ?`)
+    .bind(event.id)
+    .all<RegistrationRow>();
+  const matches = existing.results.filter((row) => sameRegistration(row, incoming));
+  matches.sort((a, b) => {
+    const byScore = registrationCompleteness(b) - registrationCompleteness(a);
+    if (byScore !== 0) return byScore;
+    return a.created_at < b.created_at ? -1 : 1;
+  });
+  const keeper = matches[0];
+
+  if (keeper) {
+    const merged = preferRegistrationField(keeper, incoming);
+    const emailChanged = (merged.email || "") !== (keeper.email || "");
+    const changed =
+      merged.name !== keeper.name || emailChanged || merged.mobile !== keeper.mobile || !keeper.privacy_policy_agreed_at;
+    if (changed) {
+      await env.DB.prepare(
+        `UPDATE registrations
+         SET name = ?, email = ?, mobile = ?, privacy_policy_agreed_at = COALESCE(privacy_policy_agreed_at, ?)
+         WHERE id = ?`,
+      )
+        .bind(merged.name, merged.email, merged.mobile, new Date().toISOString(), keeper.id)
+        .run();
+    }
+    return json({
+      ok: true,
+      already: true,
+      id: keeper.id,
+      event: { id: event.id, title: event.title },
+    });
+  }
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await env.DB.prepare(
@@ -338,7 +433,7 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
     .bind(id, event.id, name, email || null, mobileNorm, now, now)
     .run();
 
-  return json({ ok: true, id, event: { id: event.id, title: event.title } });
+  return json({ ok: true, already: false, id, event: { id: event.id, title: event.title } });
 }
 
 export async function renderPrivacy(request: Request, env: Env): Promise<Response> {

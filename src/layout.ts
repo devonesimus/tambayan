@@ -17,6 +17,7 @@ export function layout(opts: {
   og?: OgMeta;
   active?: "home" | "register" | "gallery" | "shorts" | "privacy" | "admin";
   extraHead?: string;
+  headerEnd?: string;
 }): string {
   const base = siteBase(opts.env, opts.request);
   const desc =
@@ -86,22 +87,47 @@ try {
       <nav class="nav" aria-label="Primary">
         ${nav("home", "/", "Home")}
         ${nav("register", "/register", "Register")}
-        <span class="nav-soon" title="Coming soon" aria-label="Gallery, coming soon">Gallery</span>
-        <span class="nav-soon" title="Coming soon" aria-label="Shorts, coming soon">Shorts</span>
+        <div class="nav-group">
+          <button type="button" class="nav-parent" aria-expanded="false" aria-controls="nav-stories">Stories</button>
+          <div class="nav-sub" id="nav-stories">
+            <span class="nav-soon" title="Coming soon" aria-label="Gallery, coming soon">Gallery <em>Soon</em></span>
+            <span class="nav-soon" title="Coming soon" aria-label="Shorts, coming soon">Shorts <em>Soon</em></span>
+          </div>
+        </div>
       </nav>
+      ${opts.headerEnd || ""}
     </div>
   </header>
   <main class="site-main">
     ${opts.body}
   </main>
   <footer class="site-footer">
-    <p class="footer-tagline">Your Home Away From Home</p>
-    <p class="footer-links">
-      <a href="${escapeHtml(opts.env.FACEBOOK_URL)}" rel="noopener noreferrer" target="_blank">Facebook</a>
-      ·
-      <a href="/privacy">Privacy</a>
-    </p>
+    <div class="site-footer__inner">
+      <p class="footer-tagline">Your Home Away From Home</p>
+      <p class="footer-links">
+        <a href="${escapeHtml(opts.env.FACEBOOK_URL)}" rel="noopener noreferrer" target="_blank">Facebook</a>
+        <span aria-hidden="true">·</span>
+        <a href="/privacy">Privacy</a>
+        <span class="footer-copy"><span aria-hidden="true">·</span> © ${new Date().getFullYear()} OFW Tambayan SG</span>
+      </p>
+    </div>
   </footer>
+<script>
+  (() => {
+    const group = document.querySelector(".nav-group");
+    const parent = group && group.querySelector(".nav-parent");
+    if (!group || !parent) return;
+    parent.addEventListener("click", () => {
+      const open = group.classList.toggle("is-open");
+      parent.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Node) || group.contains(event.target)) return;
+      group.classList.remove("is-open");
+      parent.setAttribute("aria-expanded", "false");
+    });
+  })();
+</script>
 </body>
 </html>`;
 }

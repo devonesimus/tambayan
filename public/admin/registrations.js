@@ -11,7 +11,20 @@
   const adminForm = document.getElementById("admin-reg-form");
   const adminStatus = document.getElementById("admin-reg-status");
   const modal = document.getElementById("guest-modal");
+  const editModal = document.getElementById("guest-edit-modal");
+  const editForm = document.getElementById("guest-edit-form");
+  const editTitle = document.getElementById("guest-edit-title");
+  const editContext = document.getElementById("guest-edit-context");
+  const editStatus = document.getElementById("guest-edit-status");
+  const attendStatus = document.getElementById("guest-attend-status");
+  const attendPanel = document.getElementById("panel-attendance");
+  const tabAttendance = document.getElementById("tab-attendance");
+  const tabDetails = document.getElementById("tab-details");
   const openBtn = document.getElementById("add-guest-open");
+  const board = document.querySelector(".reg-board");
+  const searchClear = document.getElementById("reg-search-clear");
+  const exportToggle = document.getElementById("export-toggle");
+  const exportWrap = exportToggle?.closest(".reg-export");
 
   let page = 1;
   let pageSize = 20;
@@ -19,6 +32,7 @@
   let rows = [];
   let sortCol = "created_at";
   let sortDir = "desc";
+  let editingId = "";
 
   function sortParam() {
     return `${sortCol}:${sortDir}`;
@@ -54,7 +68,7 @@
     const res = await fetch(`/api/admin/registrations?${params}`);
     const data = await res.json();
     if (!res.ok) {
-      tbody.innerHTML = `<tr><td colspan="7">${escape(data.error || "Failed to load")}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5">${escape(data.error || "Failed to load")}</td></tr>`;
       return;
     }
     total = data.total;
@@ -63,23 +77,33 @@
     tbody.innerHTML = rows.length
       ? rows
           .map(
-            (r, i) => `<tr>
+            (r, i) => `<tr class="reg-row" data-id="${escape(r.id)}" tabindex="0" role="button" aria-label="Open ${escape(r.name)}">
           <td class="reg-num">${start + i + 1}</td>
-          <td>${escape(r.name)}</td>
-          <td>${escape(r.email || "—")}</td>
-          <td>${escape(r.mobile || "—")}</td>
-          <td>${escape(r.event_title || "")}</td>
-          <td>${escape(r.source || "public")}</td>
-          <td>${escape(formatWhen(r.created_at))}</td>
+          <td class="reg-guest">
+            <span class="reg-name">${escape(r.name)}</span>
+            ${(r.source || "public") === "admin" ? `<span class="reg-walkin">Walk-in</span>` : ""}
+            ${r.attended ? `<span class="reg-here">Here</span>` : ""}
+            <span class="reg-event-cell">${escape(r.event_title || "")}</span>
+          </td>
+          <td class="reg-mobile${r.mobile ? "" : " is-empty"}">${escape(r.mobile || "—")}</td>
+          <td class="reg-attended${r.attended ? " is-yes" : ""}">${r.attended ? "Here" : "—"}</td>
+          <td class="reg-when">${escape(formatWhen(r.created_at))}</td>
         </tr>`,
           )
           .join("")
-      : `<tr><td colspan="7">No registrations found.</td></tr>`;
+      : `<tr class="reg-empty"><td colspan="5">${search?.value ? "No guests match that search." : "No registrations yet."}</td></tr>`;
+    board?.classList.toggle("is-single-event", Boolean(eventFilter?.value));
     const pages = Math.max(1, Math.ceil(total / pageSize));
     if (page > pages) page = pages;
     if (pageInfo) pageInfo.textContent = `${total} guest${total === 1 ? "" : "s"} · page ${page} of ${pages}`;
     if (prev) prev.disabled = page <= 1;
     if (next) next.disabled = page >= pages;
+  }
+
+  function sourceLabel(source) {
+    if (!source || source === "public") return "Online";
+    if (source === "admin") return "Walk-in";
+    return source;
   }
 
   function formatWhen(value) {
@@ -147,7 +171,23 @@
     openBtn?.focus();
   }
 
+  function setExportMenu(open) {
+    if (!exportWrap || !exportToggle) return;
+    exportWrap.classList.toggle("is-open", open);
+    exportToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  exportToggle?.addEventListener("click", () => setExportMenu(!exportWrap?.classList.contains("is-open")));
+  document.addEventListener("click", (e) => {
+    if (exportWrap && e.target instanceof Node && !exportWrap.contains(e.target)) setExportMenu(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !exportWrap?.classList.contains("is-open")) return;
+    setExportMenu(false);
+    exportToggle?.focus();
+  });
+
   exportXlsx?.addEventListener("click", async () => {
+    setExportMenu(false);
     const all = await fetchAllForExport();
     const sheet = (window.XLSX || {}).utils?.json_to_sheet(
       all.map((r) => ({
@@ -156,6 +196,7 @@
         Mobile: r.mobile,
         Event: r.event_title,
         Source: r.source || "public",
+        Attended: r.attended ? "Yes" : "No",
         Registered: r.created_at,
       })),
     );
@@ -165,6 +206,7 @@
   });
 
   exportPdf?.addEventListener("click", async () => {
+    setExportMenu(false);
     const all = await fetchAllForExport();
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
@@ -172,13 +214,14 @@
     doc.text("OFW Tambayan — Registrations", 14, 16);
     doc.autoTable({
       startY: 22,
-      head: [["Name", "Email", "Mobile", "Event", "Source", "Registered"]],
+      head: [["Name", "Email", "Mobile", "Event", "Source", "Attended", "Registered"]],
       body: all.map((r) => [
         r.name,
         r.email || "",
         r.mobile,
         r.event_title,
         r.source || "public",
+        r.attended ? "Yes" : "No",
         r.created_at,
       ]),
     });
@@ -222,8 +265,162 @@
   modal?.querySelectorAll("[data-close-modal]").forEach((el) => {
     el.addEventListener("click", closeModal);
   });
+  function guestById(id) {
+    return rows.find((row) => row.id === id) || null;
+  }
+
+  function setEditTab(name) {
+    const attendance = name === "attendance";
+    if (attendPanel) attendPanel.hidden = !attendance;
+    if (editForm) editForm.hidden = attendance;
+    tabAttendance?.classList.toggle("is-active", attendance);
+    tabDetails?.classList.toggle("is-active", !attendance);
+    tabAttendance?.setAttribute("aria-selected", attendance ? "true" : "false");
+    tabDetails?.setAttribute("aria-selected", attendance ? "false" : "true");
+    tabAttendance?.setAttribute("tabindex", attendance ? "0" : "-1");
+    tabDetails?.setAttribute("tabindex", attendance ? "-1" : "0");
+  }
+
+  function paintAttendance(attended) {
+    editModal?.querySelectorAll("[data-attended]").forEach((btn) => {
+      const on = Number(btn.getAttribute("data-attended")) === (attended ? 1 : 0);
+      btn.classList.toggle("is-selected", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function fillEditForm(guest) {
+    if (!editForm) return;
+    const eventField = editForm.querySelector('[name="event_id"]');
+    const nameField = editForm.querySelector('[name="name"]');
+    const emailField = editForm.querySelector('[name="email"]');
+    const mobileField = editForm.querySelector('[name="mobile"]');
+    if (eventField) eventField.value = guest.event_id || "";
+    if (nameField) nameField.value = guest.name || "";
+    if (emailField) emailField.value = guest.email || "";
+    if (mobileField) mobileField.value = guest.mobile || "";
+  }
+
+  function openEdit(id) {
+    const guest = guestById(id);
+    if (!guest || !editModal) return;
+    editingId = guest.id;
+    if (editTitle) editTitle.textContent = guest.name;
+    if (editContext) {
+      editContext.textContent = `${guest.event_title || "Event"} · ${sourceLabel(guest.source)}`;
+    }
+    if (attendStatus) {
+      attendStatus.textContent = "";
+      attendStatus.classList.remove("is-error");
+    }
+    if (editStatus) {
+      editStatus.textContent = "";
+      editStatus.classList.remove("is-error");
+    }
+    paintAttendance(guest.attended);
+    fillEditForm(guest);
+    setEditTab("attendance");
+    editModal.hidden = false;
+    document.body.classList.add("reg-modal-open");
+    tabAttendance?.focus();
+  }
+
+  function closeEdit() {
+    if (!editModal) return;
+    editModal.hidden = true;
+    editingId = "";
+    if (modal?.hidden !== false) document.body.classList.remove("reg-modal-open");
+  }
+
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && modal && !modal.hidden) closeModal();
+    if (e.key !== "Escape") return;
+    if (editModal && !editModal.hidden) {
+      closeEdit();
+      return;
+    }
+    if (modal && !modal.hidden) closeModal();
+  });
+
+  tbody?.addEventListener("click", (e) => {
+    const tr = e.target instanceof Element ? e.target.closest("tr[data-id]") : null;
+    if (!tr || !tbody.contains(tr)) return;
+    openEdit(tr.getAttribute("data-id"));
+  });
+  tbody?.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const tr = e.target instanceof Element ? e.target.closest("tr[data-id]") : null;
+    if (!tr || e.target !== tr) return;
+    e.preventDefault();
+    openEdit(tr.getAttribute("data-id"));
+  });
+
+  tabAttendance?.addEventListener("click", () => setEditTab("attendance"));
+  tabDetails?.addEventListener("click", () => setEditTab("details"));
+  editModal?.querySelectorAll("[data-close-edit]").forEach((el) => {
+    el.addEventListener("click", closeEdit);
+  });
+  editModal?.querySelectorAll("[data-attended]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!editingId || !attendStatus) return;
+      const next = Number(btn.getAttribute("data-attended")) === 1 ? 1 : 0;
+      const guest = guestById(editingId);
+      if (guest && (guest.attended ? 1 : 0) === next) return;
+      attendStatus.classList.remove("is-error");
+      attendStatus.textContent = "Saving…";
+      try {
+        const res = await fetch("/api/admin/registrations/attendance", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: editingId, attended: next }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Could not save attendance");
+        if (guest) guest.attended = next;
+        paintAttendance(next);
+        attendStatus.textContent = next ? "Marked attended." : "Marked not yet.";
+        load();
+      } catch (err) {
+        attendStatus.classList.add("is-error");
+        attendStatus.textContent = err instanceof Error ? err.message : "Error";
+      }
+    });
+  });
+
+  editForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!editStatus || !editingId) return;
+    editStatus.classList.remove("is-error");
+    editStatus.textContent = "Saving…";
+    const fd = new FormData(editForm);
+    try {
+      const res = await fetch("/api/admin/registrations/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: editingId,
+          event_id: fd.get("event_id"),
+          name: fd.get("name"),
+          email: fd.get("email"),
+          mobile: fd.get("mobile"),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Could not update registration");
+      const guest = guestById(editingId);
+      const name = String(fd.get("name") || "");
+      if (editTitle) editTitle.textContent = name;
+      if (guest) {
+        guest.name = name;
+        guest.email = String(fd.get("email") || "");
+        guest.mobile = String(fd.get("mobile") || "");
+        guest.event_id = String(fd.get("event_id") || "");
+      }
+      editStatus.textContent = "Details saved.";
+      load();
+    } catch (err) {
+      editStatus.classList.add("is-error");
+      editStatus.textContent = err instanceof Error ? err.message : "Error";
+    }
   });
 
   document.querySelectorAll(".th-sort").forEach((btn) => {
@@ -241,11 +438,20 @@
 
   let timer;
   search?.addEventListener("input", () => {
+    if (searchClear) searchClear.hidden = !search.value;
     clearTimeout(timer);
     timer = setTimeout(() => {
       page = 1;
       load();
     }, 250);
+  });
+  searchClear?.addEventListener("click", () => {
+    if (!search) return;
+    search.value = "";
+    searchClear.hidden = true;
+    search.focus();
+    page = 1;
+    load();
   });
   eventFilter?.addEventListener("change", () => {
     page = 1;
@@ -270,4 +476,11 @@
   });
 
   load();
+
+  const url = new URL(location.href);
+  if (url.searchParams.get("add") === "1") {
+    url.searchParams.delete("add");
+    history.replaceState(null, "", url);
+    openModal();
+  }
 })();

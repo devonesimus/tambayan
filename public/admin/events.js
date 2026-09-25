@@ -63,6 +63,7 @@
       const day = e.target.closest("[data-date]");
       if (!day) return;
       hidden.value = day.getAttribute("data-date");
+      hidden.dispatchEvent(new Event("change"));
       paint();
       close();
     });
@@ -98,6 +99,26 @@
 
   const datePick = form?.querySelector(".date-pick");
   if (datePick) mountCalendar(datePick);
+
+  const titlePreview = document.getElementById("event-title-preview");
+  form?.querySelector("[name='held_date']")?.addEventListener("change", (e) => {
+    const match = /^(\d{4})-(\d{2})/.exec(e.target.value || "");
+    if (titlePreview && match) {
+      titlePreview.textContent = `Listed as “OFW Tambayan - ${monthNames[Number(match[2]) - 1]} ${match[1]}”`;
+    }
+  });
+
+  const statusHint = document.getElementById("event-status-hint");
+  let statusHints = {};
+  try {
+    statusHints = JSON.parse(statusHint?.getAttribute("data-hints") || "{}");
+  } catch (err) {}
+  const paintStatusHint = () => {
+    const picked = form?.querySelector("[name='status']:checked");
+    if (statusHint) statusHint.textContent = statusHints[picked?.value] || "";
+  };
+  form?.querySelectorAll("[name='status']").forEach((el) => el.addEventListener("change", paintStatusHint));
+  paintStatusHint();
 
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();

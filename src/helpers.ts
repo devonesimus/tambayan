@@ -32,6 +32,7 @@ export type RegistrationRow = {
   mobile: string;
   privacy_policy_agreed_at: string | null;
   source: "public" | "admin";
+  attended: number;
   created_at: string;
 };
 
@@ -222,11 +223,12 @@ export function formatEventHeadline(iso: string): string {
   const day = get("day");
   // Force 3-letter month (en-SG may yield "Sept").
   const month = get("month").toUpperCase().replace(/\./g, "").slice(0, 3);
-  // Gatherings are the brand window 2–4 PM; show that when start is in the afternoon slot.
+  // Gatherings usually run 2–4 PM; show that window only when the event really starts at 2:00 PM.
   const hour = Number(get("hour"));
+  const minute = get("minute");
   const dayPeriod = get("dayPeriod").toUpperCase();
-  const timeWindow =
-    dayPeriod === "PM" && hour >= 1 && hour <= 3 ? "2–4 PM" : `${hour}${dayPeriod ? ` ${dayPeriod}` : ""}`;
+  const start = `${hour}${minute && minute !== "00" ? `:${minute}` : ""}${dayPeriod ? ` ${dayPeriod}` : ""}`;
+  const timeWindow = dayPeriod === "PM" && hour === 2 && minute === "00" ? "2–4 PM" : start;
   return `${weekday} · ${day} ${month} · ${timeWindow}`;
 }
 
@@ -239,6 +241,75 @@ export function normalizeMobile(raw: string): string | null {
 export function isValidOptionalEmail(email: string): boolean {
   if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export function foldName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function mobileDigits(mobile: string): string {
+  return mobile.replace(/\D/g, "");
+}
+
+export function mobilesMatch(a: string, b: string): boolean {
+  const da = mobileDigits(a);
+  const db = mobileDigits(b);
+  if (!da || !db) return false;
+  if (da === db) return true;
+  const [short, long] = da.length <= db.length ? [da, db] : [db, da];
+  return short.length >= 8 && long.endsWith(short);
+}
+
+/** Higher means a fuller guest record: more of the name, plus email and mobile. */
+export function registrationCompleteness(row: {
+  name: string;
+  email: string | null;
+  mobile: string;
+}): number {
+  const name = row.name.trim().replace(/\s+/g, " ");
+  const words = name ? name.split(" ").filter(Boolean).length : 0;
+  let score = Math.min(words, 4) * 2;
+  if (row.email?.trim()) score += 4;
+  if (row.mobile?.trim()) score += 4;
+  return score;
+}
+
+export function sameRegistration(
+  row: { name: string; email: string | null; mobile: string },
+  incoming: { name: string; email: string; mobile: string },
+): boolean {
+  const rowMobile = (row.mobile || "").trim();
+  const incomingMobile = incoming.mobile.trim();
+  if (rowMobile && incomingMobile && mobilesMatch(rowMobile, incomingMobile)) return true;
+
+  if (foldName(row.name) !== foldName(incoming.name) || !foldName(incoming.name)) return false;
+  if (rowMobile && incomingMobile && !mobilesMatch(rowMobile, incomingMobile)) return false;
+  const rowEmail = (row.email || "").trim().toLowerCase();
+  const incomingEmail = incoming.email.trim().toLowerCase();
+  if (rowEmail && incomingEmail && rowEmail !== incomingEmail) return false;
+  return true;
+}
+
+export function preferRegistrationField(
+  current: { name: string; email: string | null; mobile: string },
+  incoming: { name: string; email: string; mobile: string },
+): { name: string; email: string | null; mobile: string } {
+  const currentName = current.name.trim().replace(/\s+/g, " ");
+  const incomingName = incoming.name.trim().replace(/\s+/g, " ");
+  const currentWords = currentName ? currentName.split(" ").filter(Boolean).length : 0;
+  const incomingWords = incomingName ? incomingName.split(" ").filter(Boolean).length : 0;
+  const name =
+    incomingWords > currentWords || (incomingWords === currentWords && incomingName.length > currentName.length)
+      ? incomingName
+      : currentName;
+  const email = current.email?.trim() ? current.email : incoming.email.trim() || null;
+  const currentDigits = mobileDigits(current.mobile || "");
+  const incomingDigits = mobileDigits(incoming.mobile || "");
+  const mobile =
+    !current.mobile?.trim() || incomingDigits.length > currentDigits.length
+      ? incoming.mobile.trim() || current.mobile
+      : current.mobile;
+  return { name, email, mobile };
 }
 
 export function slugify(raw: string): string {

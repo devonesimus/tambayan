@@ -25,6 +25,7 @@ import {
   normalizeMobile,
   slugify,
   youtubeId,
+  youtubeThumb,
   type EventRow,
   type EventStatus,
   type RegistrationRow,
@@ -64,6 +65,34 @@ function auditWhen(iso: string): string {
   }).format(d);
 }
 
+const menuIconPaths: Record<string, string> = {
+  dashboard: `<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>`,
+  events: `<rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>`,
+  registrations: `<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.8c1.6.8 2.7 2.6 3 5.2"/>`,
+  gallery: `<rect x="3" y="3.5" width="18" height="17" rx="2"/><circle cx="8.5" cy="9" r="1.8"/><path d="m21 15.5-5-5-9.5 10"/>`,
+  videos: `<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m10 9 5 3-5 3z"/>`,
+  activity: `<path d="M3 12h4l2.5-6.5 5 13L17 12h4"/>`,
+  password: `<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>`,
+  site: `<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>`,
+  theme: `<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>`,
+  add: `<path d="M12 5v14M5 12h14"/>`,
+  upload: `<path d="M12 16V5M7.5 9.5 12 5l4.5 4.5M5 19.5h14"/>`,
+  trash: `<path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12.1a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L17.5 7"/>`,
+  arrow: `<path d="M5 12h14M13 6l6 6-6 6"/>`,
+  account: `<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.9-3.9 3.8-6.2 7.5-6.2s6.6 2.3 7.5 6.2"/>`,
+  logout: `<path d="M9 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H9M15 7.5l4.5 4.5-4.5 4.5M19.5 12H9"/>`,
+};
+
+/** Small line icons shown beside admin menu items on phones. */
+function menuIcon(name: string): string {
+  return `<svg class="admin-menu-glyph" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${menuIconPaths[name] || ""}</svg>`;
+}
+
+/** Drop the scheme and "www." so a link reads cleanly in a list. */
+function shortUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+}
+
 function adminShell(
   env: Env,
   request: Request,
@@ -80,7 +109,7 @@ function adminShell(
   ]
     .map(
       ([id, href, label]) =>
-        `<a href="${href}" class="${active === id ? "is-active" : ""}">${label}</a>`,
+        `<a href="${href}" class="${active === id ? "is-active" : ""}"${active === id ? ` aria-current="page"` : ""}>${menuIcon(id)}${label}</a>`,
     )
     .join("");
 
@@ -89,16 +118,30 @@ function adminShell(
     request,
     title: `${title} · Admin`,
     active: "admin",
-    body: `<section class="admin">
-      <div class="admin-bar">
-        <nav class="admin-nav" aria-label="Admin">${nav}</nav>
-        <div class="admin-bar-actions">
-          <button type="button" class="theme-toggle" id="admin-theme" aria-pressed="false">Dark mode</button>
-          <a class="admin-site-link${active === "activity" ? " is-active" : ""}" href="/admin/activity">Activity</a>
-          <a class="admin-site-link" href="/">View site</a>
-          <form method="post" action="/admin/logout"><button class="btn btn-ghost" type="submit">Log out</button></form>
+    headerEnd: `<div class="admin-head">
+        <button type="button" class="admin-menu" id="admin-menu" aria-expanded="false" aria-controls="admin-menu-panel">
+          <span class="admin-menu-icon" aria-hidden="true"></span>
+          <span class="admin-menu-label">Menu</span>
+        </button>
+        <div class="admin-menu-panel" id="admin-menu-panel">
+          <nav class="admin-nav" aria-label="Admin">${nav}</nav>
+          <div class="admin-bar-actions">
+            <button type="button" class="theme-toggle" id="admin-theme" aria-pressed="false" title="Dark mode">${menuIcon("theme")}<span class="theme-toggle-label">Dark mode</span><span class="theme-switch" aria-hidden="true"></span></button>
+            <div class="admin-account">
+              <button type="button" class="admin-account-btn${active === "activity" || active === "password" ? " is-active" : ""}" id="admin-account" aria-expanded="false" aria-controls="admin-account-menu">${menuIcon("account")}<span>Account</span></button>
+              <div class="admin-account-menu" id="admin-account-menu">
+                <p class="admin-menu-heading">Account</p>
+                <a class="admin-site-link${active === "activity" ? " is-active" : ""}" href="/admin/activity">${menuIcon("activity")}Activity</a>
+                <a class="admin-site-link${active === "password" ? " is-active" : ""}" href="/admin/password">${menuIcon("password")}Password</a>
+                <a class="admin-site-link" href="/">${menuIcon("site")}View site</a>
+                <form method="post" action="/admin/logout"><button class="btn btn-ghost admin-logout" type="submit">${menuIcon("logout")}Log out</button></form>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </div>`,
+    body: `<section class="admin">
+      <div class="admin-scrim" id="admin-scrim" aria-hidden="true"></div>
       ${body}
     </section>
     <script>
@@ -111,13 +154,63 @@ function adminShell(
           if (dark) document.documentElement.setAttribute("data-admin-theme", "dark");
           else document.documentElement.removeAttribute("data-admin-theme");
           btn.setAttribute("aria-pressed", dark ? "true" : "false");
-          btn.textContent = dark ? "Light mode" : "Dark mode";
         };
         apply(document.documentElement.getAttribute("data-admin-theme") === "dark");
         btn.addEventListener("click", () => {
           const next = document.documentElement.getAttribute("data-admin-theme") !== "dark";
           try { localStorage.setItem(key, next ? "dark" : "light"); } catch (e) {}
           apply(next);
+        });
+      })();
+      (() => {
+        const menu = document.getElementById("admin-menu");
+        const label = menu && menu.querySelector(".admin-menu-label");
+        if (!menu) return;
+        const place = () => {
+          const header = document.querySelector(".site-header");
+          if (!header) return;
+          document.documentElement.style.setProperty(
+            "--admin-menu-top",
+            header.getBoundingClientRect().bottom + "px",
+          );
+        };
+        const set = (open) => {
+          document.body.classList.toggle("admin-menu-open", open);
+          menu.setAttribute("aria-expanded", open ? "true" : "false");
+          if (label) label.textContent = open ? "Close" : "Menu";
+          if (open) place();
+        };
+        const isOpen = () => document.body.classList.contains("admin-menu-open");
+        menu.addEventListener("click", () => set(!isOpen()));
+        document.getElementById("admin-scrim")?.addEventListener("click", () => set(false));
+        document.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || !isOpen()) return;
+          set(false);
+          menu.focus();
+        });
+        const account = document.getElementById("admin-account");
+        const accountWrap = account && account.closest(".admin-account");
+        const setAccount = (open) => {
+          if (!account || !accountWrap) return;
+          accountWrap.classList.toggle("is-open", open);
+          account.setAttribute("aria-expanded", open ? "true" : "false");
+        };
+        account?.addEventListener("click", () => setAccount(!accountWrap?.classList.contains("is-open")));
+        document.addEventListener("click", (event) => {
+          if (accountWrap && event.target instanceof Node && !accountWrap.contains(event.target)) setAccount(false);
+        });
+        document.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || !accountWrap?.classList.contains("is-open")) return;
+          setAccount(false);
+          account?.focus();
+        });
+        const wide = window.matchMedia("(min-width: 721px)");
+        wide.addEventListener("change", () => {
+          set(false);
+          setAccount(false);
+        });
+        window.addEventListener("resize", () => {
+          if (isOpen()) place();
         });
       })();
     </script>`
@@ -213,6 +306,11 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     return auth;
   }
 
+  const mustChange = await passwordChangeRequired(env, auth.email);
+  if (mustChange && path !== "/admin/password") {
+    return new Response(null, { status: 302, headers: { Location: "/admin/password" } });
+  }
+
   if (path === "/admin" || path === "/admin/") return renderDashboard(request, env);
   if (path === "/admin/events") return handleAdminEvents(request, env);
   if (path === "/admin/announcement") {
@@ -222,12 +320,19 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === "/admin/gallery") return handleAdminGallery(request, env);
   if (path === "/admin/videos") return handleAdminVideos(request, env);
   if (path === "/admin/activity") return renderActivity(request, env);
+  if (path === "/admin/password") return handlePassword(request, env, auth.email);
 
   if (path === "/api/admin/registrations" && request.method === "GET") {
     return apiRegistrations(request, env);
   }
   if (path === "/api/admin/registrations" && request.method === "POST") {
     return apiAdminCreateRegistration(request, env, auth.email);
+  }
+  if (path === "/api/admin/registrations/update" && request.method === "POST") {
+    return apiAdminUpdateRegistration(request, env, auth.email);
+  }
+  if (path === "/api/admin/registrations/attendance" && request.method === "POST") {
+    return apiAdminSetAttendance(request, env, auth.email);
   }
   if (path === "/api/admin/events" && request.method === "POST") {
     return apiUpsertEvent(request, env, auth.email);
@@ -258,9 +363,11 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
       .trim()
       .toLowerCase();
     const password = String(form.get("password") || "");
-    const user = await env.DB.prepare("SELECT email, password_hash FROM admin_users WHERE email = ?")
+    const user = await env.DB.prepare(
+      "SELECT email, password_hash, must_change_password FROM admin_users WHERE email = ?",
+    )
       .bind(email)
-      .first<{ email: string; password_hash: string }>();
+      .first<{ email: string; password_hash: string; must_change_password: number }>();
 
     if (!user || !(await verifyPassword(password, user.password_hash))) {
       return html(
@@ -290,9 +397,10 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
       new URL(request.url).protocol === "https:",
     );
     await recordAudit(env, { actor: user.email, action: "login", summary: "Signed in" });
+    const next = user.must_change_password ? "/admin/password" : "/admin";
     return new Response(null, {
       status: 302,
-      headers: { Location: "/admin", "Set-Cookie": cookie },
+      headers: { Location: next, "Set-Cookie": cookie },
     });
   }
 
@@ -317,6 +425,98 @@ function loginForm(error?: string): string {
       <button class="btn btn-primary" type="submit">Sign in</button>
     </form>
   </section>`;
+}
+
+async function passwordChangeRequired(env: Env, email: string): Promise<boolean> {
+  const row = await env.DB.prepare(`SELECT must_change_password FROM admin_users WHERE email = ?`)
+    .bind(email)
+    .first<{ must_change_password: number }>();
+  return row?.must_change_password === 1;
+}
+
+function passwordForm(
+  email: string,
+  hints: { current?: string; next?: string; confirm?: string } = {},
+  ok = false,
+  required = false,
+): string {
+  const hint = (field: "current" | "next" | "confirm") =>
+    hints[field] ? `<span class="field-hint">${escapeHtml(hints[field])}</span>` : "";
+  const lede = required
+    ? `Choose a new password for ${escapeHtml(email)} before the rest of the admin opens.`
+    : `Update the password for ${escapeHtml(email)}. You stay signed in on this browser.`;
+  return `
+    <header class="admin-pagehead">
+      <h1>Password</h1>
+      <p>${lede}</p>
+    </header>
+    <section class="admin-panel password-panel">
+      <form class="form" method="post" action="/admin/password">
+        <label>
+          <span class="field-label">Current password ${hint("current")}</span>
+          <input name="current" type="password" autocomplete="current-password" required />
+        </label>
+        <label>
+          <span class="field-label">New password ${hint("next")}</span>
+          <input name="next" type="password" autocomplete="new-password" required minlength="10" />
+        </label>
+        <label>
+          <span class="field-label">Confirm new password ${hint("confirm")}</span>
+          <input name="confirm" type="password" autocomplete="new-password" required minlength="10" />
+        </label>
+        <div class="admin-form-actions">
+          <button class="btn btn-primary" type="submit">Update password</button>
+        </div>
+        ${ok ? `<p class="form-status" role="status">Password updated.</p>` : ""}
+      </form>
+    </section>`;
+}
+
+async function handlePassword(request: Request, env: Env, email: string): Promise<Response> {
+  if (request.method === "POST") {
+    const form = await request.formData();
+    const current = String(form.get("current") || "");
+    const next = String(form.get("next") || "");
+    const confirm = String(form.get("confirm") || "");
+    const hints: { current?: string; next?: string; confirm?: string } = {};
+
+    const user = await env.DB.prepare(`SELECT email, password_hash FROM admin_users WHERE email = ?`)
+      .bind(email)
+      .first<{ email: string; password_hash: string }>();
+    if (!user || !(await verifyPassword(current, user.password_hash))) {
+      hints.current = "That password doesn’t match";
+    }
+    if (next.length < 10) hints.next = "Use at least 10 characters";
+    else if (current && next === current) hints.next = "Choose a different password";
+    if (next !== confirm) hints.confirm = "Doesn’t match the new password";
+
+    const required = await passwordChangeRequired(env, email);
+    if (Object.keys(hints).length === 0 && user) {
+      const hash = await hashPassword(next);
+      await env.DB.prepare(
+        `UPDATE admin_users SET password_hash = ?, must_change_password = 0 WHERE email = ?`,
+      )
+        .bind(hash, user.email)
+        .run();
+      await recordAudit(env, {
+        actor: user.email,
+        action: "password.change",
+        summary: "Changed password",
+      });
+      if (required) {
+        return new Response(null, { status: 302, headers: { Location: "/admin" } });
+      }
+      return html(adminShell(env, request, "Password", passwordForm(email, {}, true), "password"));
+    }
+
+    return html(
+      adminShell(env, request, "Password", passwordForm(email, hints, false, required), "password"),
+      400,
+    );
+  }
+
+  const required = await passwordChangeRequired(env, email);
+  return html(adminShell(env, request, "Password", passwordForm(email, {}, false, required), "password"));
 }
 
 async function renderActivity(request: Request, env: Env): Promise<Response> {
@@ -377,6 +577,39 @@ async function renderDashboard(request: Request, env: Env): Promise<Response> {
   const totalEvents =
     (await env.DB.prepare(`SELECT COUNT(*) AS c FROM events`).first<{ c: number }>())?.c || 0;
 
+  const recent = await env.DB.prepare(
+    `SELECT created_at, actor, summary FROM admin_audit ORDER BY created_at DESC LIMIT 5`,
+  ).all<{ created_at: string; actor: string; summary: string }>();
+  const regHref = open
+    ? `/admin/registrations?event_id=${encodeURIComponent(open.id)}`
+    : "/admin/registrations";
+  const galleryHref = open ? `/admin/gallery?event_id=${encodeURIComponent(open.id)}` : "/admin/gallery";
+  const quick = [
+    ["add", `${regHref}${open ? "&" : "?"}add=1`, "Add a walk-in", "Guest at the door"],
+    ["upload", galleryHref, "Upload photos", open ? `For ${shortEventTitle(open.title)}` : "Pick an event first"],
+    ["videos", "/admin/videos", "Add a short", "YouTube or Shorts link"],
+    ["site", "/register", "Registration page", "See what guests see"],
+  ]
+    .map(
+      ([icon, href, label, hint]) =>
+        `<a class="admin-quick" href="${escapeHtml(href)}"${href === "/register" ? ` target="_blank" rel="noopener"` : ""}>
+          <span class="admin-quick-icon">${menuIcon(icon)}</span>
+          <span class="admin-quick-text"><strong>${escapeHtml(label)}</strong><em>${escapeHtml(hint)}</em></span>
+        </a>`,
+    )
+    .join("");
+  const activity =
+    recent.results.length === 0
+      ? `<li class="admin-audit-empty">No admin activity yet.</li>`
+      : recent.results
+          .map(
+            (row) => `<li>
+              <time datetime="${escapeHtml(row.created_at)}">${escapeHtml(auditWhen(row.created_at))}</time>
+              <span><strong>${escapeHtml(row.actor)}</strong> ${escapeHtml(row.summary)}</span>
+            </li>`,
+          )
+          .join("");
+
   const body = `
     <header class="admin-pagehead">
       <h1>Dashboard</h1>
@@ -385,32 +618,39 @@ async function renderDashboard(request: Request, env: Env): Promise<Response> {
     <div class="admin-stats">
       ${
         open
-          ? `<a class="admin-stat admin-stat-lead" href="/admin/registrations?event_id=${escapeHtml(open.id)}">
-        <span>Open for public</span>
+          ? `<a class="admin-stat admin-stat-lead" href="/admin/events?id=${escapeHtml(open.id)}">
+        <span>Open for public ${statusBadge(open)}</span>
         <strong>${escapeHtml(open.title)}</strong>
         <em>${escapeHtml(formatEventWhen(open.held_at))}</em>
       </a>`
-          : `<article class="admin-stat admin-stat-lead">
+          : `<a class="admin-stat admin-stat-lead" href="/admin/events">
         <span>Open for public</span>
         <strong>None</strong>
         <em>No event is accepting public sign-up</em>
-      </article>`
+      </a>`
       }
-      <article class="admin-stat">
+      <a class="admin-stat" href="${escapeHtml(regHref)}">
         <span>Registrations</span>
         <strong>${count}</strong>
         <em>${open ? "On the open event" : "No open event"}</em>
-      </article>
-      <article class="admin-stat">
+      </a>
+      <a class="admin-stat" href="/admin/events">
         <span>Events</span>
         <strong>${totalEvents}</strong>
         <em>Draft, Open, and Closed</em>
-      </article>
+      </a>
     </div>
-    <div class="admin-actions">
-      <a class="btn btn-primary" href="/admin/events">Manage events</a>
-      <a class="btn btn-ghost" href="/admin/registrations">View registrations</a>
-    </div>`;
+    <section class="admin-dash-section" aria-labelledby="quick-title">
+      <h2 id="quick-title" class="admin-section-title">Quick actions</h2>
+      <div class="admin-quick-grid">${quick}</div>
+    </section>
+    <section class="admin-panel admin-dash-activity" aria-labelledby="recent-title">
+      <div class="admin-panel-head">
+        <h2 id="recent-title">Recent activity</h2>
+        <a class="admin-panel-link" href="/admin/activity">View all</a>
+      </div>
+      <ul class="admin-audit-list">${activity}</ul>
+    </section>`;
 
   return html(adminShell(env, request, "Dashboard", body, "dashboard"));
 }
@@ -429,23 +669,23 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
       : `<ul class="admin-event-list">
         ${events.results
           .map((e) => {
-            return `<li>
+            return `<li${e.id === editing?.id ? ` class="is-editing" aria-current="true"` : ""}>
             <div class="admin-event-main">
               <div class="admin-event-title">
                 <strong>${escapeHtml(e.title)}</strong>
                 ${statusBadge(e)}
               </div>
-              <p class="admin-event-meta">${escapeHtml(formatEventWhen(e.held_at))}<br />${escapeHtml(e.address)}</p>
+              <p class="admin-event-meta"><span>${escapeHtml(formatEventWhen(e.held_at))}</span><span>${escapeHtml(e.address)}</span></p>
             </div>
-            <div class="toolbar-actions">
-              <a class="btn btn-ghost" href="/admin/events?id=${escapeHtml(e.id)}">Edit</a>
+            <div class="admin-row-actions">
+              <a class="btn btn-ghost btn-sm" href="/admin/events?id=${escapeHtml(e.id)}#event-form">${e.id === editing?.id ? "Editing" : "Edit"}</a>
               ${
                 e.status === "open"
-                  ? `<button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="closed">Force close</button>`
+                  ? `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="closed">Force close</button>`
                   : e.status === "closed"
-                    ? `<button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="open">Reopen</button>`
-                    : `<button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="open">Open</button>
-                       <button type="button" class="btn btn-ghost" data-status="${escapeHtml(e.id)}" data-to="closed">Close</button>`
+                    ? `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="open">Reopen</button>`
+                    : `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="open">Open</button>
+                       <button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="closed">Close</button>`
               }
             </div>
           </li>`;
@@ -469,57 +709,91 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
     </header>
     <div class="admin-split">
       <section class="admin-panel">
-        <h2>All events</h2>
+        <div class="admin-panel-head">
+          <h2>All events</h2>
+          <a class="btn btn-primary btn-sm" href="/admin/events#event-form">${menuIcon("add")}New event</a>
+        </div>
         ${list}
       </section>
-      <section class="admin-panel">
+      <section class="admin-panel${editing ? " is-editing" : ""}" id="event-form-panel">
         <h2>${formTitle}</h2>
-        <form class="form event-form" id="event-form">
+        <form class="form event-form" id="event-form" tabindex="-1">
           <input type="hidden" name="id" value="${escapeHtml(editing?.id || "")}" />
-          <div class="admin-fields">
-            <fieldset class="when-field is-wide">
-              <legend>When <span>Singapore time</span></legend>
-              <div class="when-grid">
-                <label class="when-date"><span>Date</span>
-                  <div class="date-pick">
-                    <input type="hidden" name="held_date" value="${escapeHtml(when.date)}" />
-                    <button type="button" class="date-pick-btn" aria-haspopup="dialog" aria-expanded="false">${when.date ? escapeHtml(when.date) : "Choose a date"}</button>
-                    <div class="date-pop" hidden role="dialog" aria-label="Choose a date">
-                      <div class="date-pop-head">
-                        <button type="button" data-cal="prev" aria-label="Previous month">‹</button>
-                        <strong data-cal="label"></strong>
-                        <button type="button" data-cal="next" aria-label="Next month">›</button>
-                      </div>
-                      <div class="date-pop-week" aria-hidden="true"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
-                      <div class="date-pop-grid" data-cal="grid"></div>
-                    </div>
+          <fieldset class="ef-group">
+            <legend class="visually-hidden">When</legend>
+            <div class="ef-field">
+              <span class="ef-label" id="event-date-label">Date</span>
+              <div class="date-pick">
+                <input type="hidden" name="held_date" value="${escapeHtml(when.date)}" />
+                <button type="button" class="date-pick-btn" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="event-date-label">${when.date ? escapeHtml(when.date) : "Choose a date"}</button>
+                <div class="date-pop" hidden role="dialog" aria-label="Choose a date">
+                  <div class="date-pop-head">
+                    <button type="button" data-cal="prev" aria-label="Previous month">‹</button>
+                    <strong data-cal="label"></strong>
+                    <button type="button" data-cal="next" aria-label="Next month">›</button>
                   </div>
-                </label>
-                <label><span>Hour</span><select name="held_hour">${hourOptions}</select></label>
-                <label><span>Minutes</span><select name="held_minute">${minuteOptions}</select></label>
-                <label><span>Period</span>
-                  <select name="held_period">
-                    <option value="AM" ${when.period === "AM" ? "selected" : ""}>AM</option>
-                    <option value="PM" ${when.period === "PM" ? "selected" : ""}>PM</option>
-                  </select>
-                </label>
+                  <div class="date-pop-week" aria-hidden="true"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+                  <div class="date-pop-grid" data-cal="grid"></div>
+                </div>
               </div>
-            </fieldset>
-            <label><span>Status</span>
-              <select name="status">
-                ${(["draft", "open", "closed"] as EventStatus[])
-                  .map((s) => {
-                    return `<option value="${s}" ${(editing?.status || "draft") === s ? "selected" : ""}>${statusLabel(s)}</option>`;
-                  })
-                  .join("")}
-              </select>
+              <p class="ef-hint" id="event-title-preview" aria-live="polite">${editing ? `Listed as “${escapeHtml(editing.title)}”` : "The event name comes from the month you pick."}</p>
+            </div>
+            <div class="ef-field">
+              <span class="ef-label">Time <em>Singapore</em></span>
+              <div class="time-row">
+                <select name="held_hour" aria-label="Hour">${hourOptions}</select>
+                <span class="time-sep" aria-hidden="true">:</span>
+                <select name="held_minute" aria-label="Minutes">${minuteOptions}</select>
+                <div class="segmented segmented--sm" role="radiogroup" aria-label="AM or PM">
+                  ${(["AM", "PM"] as const)
+                    .map(
+                      (p) =>
+                        `<label><input type="radio" name="held_period" value="${p}" ${when.period === p ? "checked" : ""} /><span>${p}</span></label>`,
+                    )
+                    .join("")}
+                </div>
+              </div>
+            </div>
+          </fieldset>
+          <fieldset class="ef-group">
+            <legend class="ef-label">Status</legend>
+            <div class="segmented" role="radiogroup" aria-describedby="event-status-hint">
+              ${(["draft", "open", "closed"] as EventStatus[])
+                .map(
+                  (st) =>
+                    `<label><input type="radio" name="status" value="${st}" ${(editing?.status || "draft") === st ? "checked" : ""} /><span>${statusLabel(st)}</span></label>`,
+                )
+                .join("")}
+            </div>
+            <p class="ef-hint" id="event-status-hint" data-hints='${escapeHtml(
+              JSON.stringify({
+                draft: "Not taking public sign-ups yet. Can show on the home page as upcoming.",
+                open: "Takes public sign-ups. Any other open event will be closed.",
+                closed: "No public sign-ups. You can still add guests here.",
+              }),
+            )}'></p>
+          </fieldset>
+          <div class="ef-group">
+            <label class="ef-field"><span class="ef-label">Venue</span>
+              <input name="address" required maxlength="300" value="${escapeHtml(editing?.address || DEFAULT_VENUE)}" />
             </label>
-            <label class="is-wide"><span>Venue</span><input name="address" required maxlength="300" value="${escapeHtml(editing?.address || DEFAULT_VENUE)}" /></label>
-            <label class="is-wide"><span>Announcement title <em>optional</em></span><input name="announcement_title" maxlength="200" value="${escapeHtml(editing?.announcement_title || "")}" /></label>
-            <label class="is-wide"><span>Announcement</span><textarea name="announcement_body" rows="4" maxlength="2000">${escapeHtml(editing?.announcement_body || "")}</textarea></label>
           </div>
-          <div class="admin-form-actions">
-            <button class="btn btn-primary" type="submit">${editing ? "Save event" : "Create event"}</button>
+          <details class="ef-group ef-more"${editing?.announcement_title || editing?.announcement_body ? " open" : ""}>
+            <summary>
+              <span>${editing?.announcement_title || editing?.announcement_body ? "Announcement" : "Add an announcement"}</span>
+              <em>optional</em>
+            </summary>
+            <div class="ef-more-body">
+              <label class="ef-field"><span class="ef-label">Title</span>
+                <input name="announcement_title" maxlength="200" value="${escapeHtml(editing?.announcement_title || "")}" placeholder="Defaults to the event name" />
+              </label>
+              <label class="ef-field"><span class="ef-label">Message</span>
+                <textarea name="announcement_body" rows="4" maxlength="2000" placeholder="Shown on the home page">${escapeHtml(editing?.announcement_body || "")}</textarea>
+              </label>
+            </div>
+          </details>
+          <div class="admin-form-actions ef-actions">
+            <button class="btn btn-primary" type="submit">${editing ? "Save changes" : "Create event"}</button>
             ${editing ? `<a class="btn btn-ghost" href="/admin/events">Cancel</a>` : ""}
           </div>
           <p id="event-status" class="form-status" role="status"></p>
@@ -640,40 +914,55 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
 
   const body = `
     <div class="reg-layout">
-    <div class="reg-layout-bar">
-      <header class="admin-pagehead">
-        <h1>Registrations</h1>
-        <p>Filter the guest list, export it, or add a walk-in. A mobile number is optional.</p>
-      </header>
-      <button type="button" class="btn btn-primary" id="add-guest-open">Add guest</button>
-    </div>
+    <header class="admin-pagehead">
+      <h1>Registrations</h1>
+      <p>Filter the guest list, export it, or add a walk-in. Tap a guest to mark attendance or edit their details.</p>
+    </header>
     <section class="admin-panel reg-board">
       <div class="reg-filters">
-        <label>Event
+        <label class="reg-event">
+          <span class="visually-hidden">Event</span>
           <select id="event-filter">
             <option value="">All events</option>
             ${eventOptions}
           </select>
         </label>
-        <label>Search
-          <input id="reg-search" type="search" placeholder="Name, email, or mobile" />
+        <label class="reg-search">
+          <span class="visually-hidden">Search guests</span>
+          <svg class="reg-search-icon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+          <input id="reg-search" type="search" placeholder="Search name, email, or mobile" autocomplete="off" />
+          <button type="button" class="reg-search-clear" id="reg-search-clear" aria-label="Clear search" hidden>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
         </label>
-        <div class="reg-exports">
-          <button type="button" class="btn btn-ghost" id="export-xlsx">Export Excel</button>
-          <button type="button" class="btn btn-ghost" id="export-pdf">Export PDF</button>
+      </div>
+      <div class="reg-toolbar">
+        <p id="page-info" class="reg-count" aria-live="polite">Loading…</p>
+        <div class="reg-toolbar-actions">
+          <div class="reg-export">
+            <button type="button" class="btn btn-ghost btn-sm" id="export-toggle" aria-expanded="false" aria-controls="export-menu" aria-haspopup="true">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>
+              <span class="reg-export-label">Export</span>
+            </button>
+            <div class="reg-export-menu" id="export-menu">
+              <button type="button" id="export-xlsx">Excel <em>.xlsx</em></button>
+              <button type="button" id="export-pdf">PDF <em>.pdf</em></button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="add-guest-open">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            <span>Add<span class="reg-add-more"> guest</span></span>
+          </button>
         </div>
       </div>
-      <p id="page-info" class="reg-count">Loading…</p>
       <div class="table-wrap">
         <table id="reg-table">
           <thead>
             <tr>
               <th class="reg-num" scope="col"><span class="visually-hidden">Number</span></th>
               <th aria-sort="none"><button type="button" class="th-sort" data-sort="name">Name</button></th>
-              <th aria-sort="none"><button type="button" class="th-sort" data-sort="email">Email</button></th>
               <th aria-sort="none"><button type="button" class="th-sort" data-sort="mobile">Mobile</button></th>
-              <th aria-sort="none"><button type="button" class="th-sort" data-sort="event">Event</button></th>
-              <th aria-sort="none"><button type="button" class="th-sort" data-sort="source">Source</button></th>
+              <th aria-sort="none"><button type="button" class="th-sort" data-sort="attended">Attended</button></th>
               <th aria-sort="descending"><button type="button" class="th-sort is-active" data-sort="created_at" data-dir="desc">Registered</button></th>
             </tr>
           </thead>
@@ -721,6 +1010,41 @@ async function renderRegistrations(request: Request, env: Env): Promise<Response
         </form>
       </div>
     </div>
+    <div class="reg-modal" id="guest-edit-modal" hidden>
+      <button type="button" class="reg-modal-backdrop" data-close-edit aria-label="Close"></button>
+      <div class="reg-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="guest-edit-title">
+        <div class="reg-modal-head">
+          <h2 id="guest-edit-title">Guest</h2>
+          <button type="button" class="reg-modal-close" data-close-edit aria-label="Close">Close</button>
+        </div>
+        <div class="reg-tabs" role="tablist" aria-label="Guest">
+          <button type="button" class="reg-tab is-active" id="tab-attendance" role="tab" aria-selected="true" aria-controls="panel-attendance">Attendance</button>
+          <button type="button" class="reg-tab" id="tab-details" role="tab" aria-selected="false" aria-controls="guest-edit-form" tabindex="-1">Details</button>
+        </div>
+        <div id="panel-attendance" role="tabpanel" aria-labelledby="tab-attendance">
+          <p class="reg-modal-note" id="guest-edit-context"></p>
+          <div class="reg-attend-choices" role="group" aria-label="Attendance">
+            <button type="button" class="reg-attend-choice" data-attended="0" aria-pressed="false">Not yet</button>
+            <button type="button" class="reg-attend-choice" data-attended="1" aria-pressed="false">Attended</button>
+          </div>
+          <p id="guest-attend-status" class="form-status" role="status"></p>
+        </div>
+        <form class="form" id="guest-edit-form" hidden role="tabpanel" aria-labelledby="tab-details">
+          <div class="reg-form-grid">
+            <label class="is-wide">Event
+              <select name="event_id" required>${eventOptions}</select>
+            </label>
+            <label class="is-wide"><span>Name</span><input name="name" required maxlength="120" autocomplete="name" /></label>
+            <label><span>Email <em>optional</em></span><input name="email" type="email" maxlength="200" autocomplete="email" /></label>
+            <label><span>Mobile <em>optional</em></span><input name="mobile" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="+65…" /></label>
+          </div>
+          <div class="admin-form-actions">
+            <button class="btn btn-primary" type="submit">Save details</button>
+          </div>
+          <p id="guest-edit-status" class="form-status" role="status"></p>
+        </form>
+      </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js" defer></script>
@@ -746,6 +1070,7 @@ async function apiRegistrations(request: Request, env: Env): Promise<Response> {
     mobile: "r.mobile",
     source: "r.source",
     event: "e.title",
+    attended: "r.attended",
   };
   const col = sortColumns[sortCol] || "r.created_at";
   const dir = sortDirRaw?.toLowerCase() === "asc" ? "ASC" : "DESC";
@@ -829,6 +1154,81 @@ async function apiAdminCreateRegistration(request: Request, env: Env, actor: str
   return json({ ok: true, id, event: { id: event.id, title: event.title } });
 }
 
+async function apiAdminUpdateRegistration(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as {
+    id?: string;
+    event_id?: string;
+    name?: string;
+    email?: string;
+    mobile?: string;
+  };
+  const id = String(body.id || "").trim();
+  const eventId = String(body.event_id || "").trim();
+  const name = String(body.name || "").trim();
+  const email = String(body.email || "").trim();
+  const mobile = String(body.mobile || "").trim();
+
+  if (!id) return json({ error: "id required" }, 400);
+  if (!eventId) return json({ error: "event_id required" }, 400);
+  if (!name || name.length > 120) return json({ error: "Name is required." }, 400);
+  if (!isValidOptionalEmail(email)) return json({ error: "Email looks invalid." }, 400);
+  const mobileNorm = mobile ? normalizeMobile(mobile) : "";
+  if (mobile && !mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
+
+  const existing = await env.DB.prepare(`SELECT id FROM registrations WHERE id = ?`).bind(id).first<{ id: string }>();
+  if (!existing) return json({ error: "Registration not found." }, 404);
+
+  const event = await env.DB.prepare(`SELECT id, title FROM events WHERE id = ?`)
+    .bind(eventId)
+    .first<{ id: string; title: string }>();
+  if (!event) return json({ error: "event not found" }, 404);
+
+  await env.DB.prepare(
+    `UPDATE registrations SET event_id = ?, name = ?, email = ?, mobile = ? WHERE id = ?`,
+  )
+    .bind(eventId, name, email || null, mobileNorm, id)
+    .run();
+
+  await recordAudit(env, {
+    actor,
+    action: "guest.update",
+    targetId: id,
+    summary: `Updated guest ${name} on ${shortEventTitle(event.title)}`,
+  });
+
+  return json({ ok: true, id });
+}
+
+async function apiAdminSetAttendance(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as { id?: string; attended?: unknown };
+  const id = String(body.id || "").trim();
+  const attended = body.attended === 1 || body.attended === "1" ? 1 : body.attended === 0 || body.attended === "0" ? 0 : null;
+  if (!id) return json({ error: "id required" }, 400);
+  if (attended === null) return json({ error: "attended must be 0 or 1" }, 400);
+
+  const row = await env.DB.prepare(
+    `SELECT r.id, r.name, e.title AS event_title
+     FROM registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ?`,
+  )
+    .bind(id)
+    .first<{ id: string; name: string; event_title: string }>();
+  if (!row) return json({ error: "Registration not found." }, 404);
+
+  await env.DB.prepare(`UPDATE registrations SET attended = ? WHERE id = ?`).bind(attended, id).run();
+
+  await recordAudit(env, {
+    actor,
+    action: "guest.attend",
+    targetId: id,
+    summary: attended
+      ? `Marked ${row.name} attended at ${shortEventTitle(row.event_title)}`
+      : `Cleared attendance for ${row.name} at ${shortEventTitle(row.event_title)}`,
+  });
+
+  return json({ ok: true, id, attended });
+}
+
 async function handleAdminGallery(request: Request, env: Env): Promise<Response> {
   const events = await env.DB.prepare("SELECT * FROM events ORDER BY held_at DESC").all<EventRow>();
   const selected = new URL(request.url).searchParams.get("event_id") || events.results[0]?.id || "";
@@ -851,11 +1251,9 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
               const id = String(img.id);
               const caption = String(img.caption || "").trim();
               return `<li>
-                <img src="/api/media/${encodeURIComponent(key)}" alt="" />
-                <div class="admin-photo-meta">
-                  <span>${escapeHtml(caption || "Untitled")}</span>
-                  <button type="button" class="btn btn-ghost btn-danger" data-delete-image="${escapeHtml(id)}">Delete</button>
-                </div>
+                <img src="/api/media/${encodeURIComponent(key)}" alt="${escapeHtml(caption)}" loading="lazy" />
+                <button type="button" class="admin-photo-delete" data-delete-image="${escapeHtml(id)}" aria-label="Delete photo${caption ? `: ${escapeHtml(caption)}` : ""}" title="Delete photo">${menuIcon("trash")}</button>
+                <p class="admin-photo-caption${caption ? "" : " is-empty"}">${escapeHtml(caption || "No caption")}</p>
               </li>`;
             })
             .join("")}
@@ -871,7 +1269,7 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
       ? `<p class="notice gallery-limit-warn" role="status">This event is at the ${GALLERY_MAX_PER_EVENT}-photo limit. Delete some photos before uploading more.</p>`
       : nearLimit
         ? `<p class="notice gallery-limit-warn" role="status">Near the limit: ${photoCount} of ${GALLERY_MAX_PER_EVENT} photos used, ${remaining} left.</p>`
-        : `<p class="gallery-limit-meta">${photoCount} of ${GALLERY_MAX_PER_EVENT} photos</p>`;
+        : "";
 
   const body = `
     <header class="admin-pagehead">
@@ -915,7 +1313,10 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
       </form>
     </section>
     <section class="admin-panel">
-      <h2>Photos</h2>
+      <div class="admin-panel-head">
+        <h2>Photos</h2>
+        ${selected ? `<span class="admin-panel-meta">${photoCount} of ${GALLERY_MAX_PER_EVENT}</span>` : ""}
+      </div>
       <div id="gallery-list">${imagesHtml}</div>
     </section>
     <script src="/admin/gallery.js" defer></script>`;
@@ -1081,18 +1482,18 @@ async function handleAdminVideos(request: Request, env: Env): Promise<Response> 
 
   const body = `
     <header class="admin-pagehead">
-      <h1>Shorts</h1>
-      <p>Add a YouTube or Shorts link. It shows on the public Shorts page in sort order.</p>
+      <h1>Videos</h1>
+      <p>Add a YouTube or Shorts link. Videos appear on the public Shorts page, lowest sort order first.</p>
     </header>
     <div class="admin-split is-form-aside">
     <section class="admin-panel">
-    <h2>Add a short</h2>
+    <h2>Add a video</h2>
     <form class="form" id="video-form">
       <input type="hidden" name="id" value="" />
       <div class="admin-fields">
         <label class="is-wide"><span>Title</span><input name="title" required maxlength="200" /></label>
         <label class="is-wide"><span>YouTube URL</span><input name="youtube_url" required placeholder="https://www.youtube.com/shorts/…" /></label>
-        <label><span>Sort order</span><input name="sort_order" type="number" value="0" /></label>
+        <label><span>Sort order</span><input name="sort_order" type="number" value="0" inputmode="numeric" /></label>
       </div>
       <div class="admin-form-actions">
         <button class="btn btn-primary" type="submit">Save video</button>
@@ -1101,19 +1502,27 @@ async function handleAdminVideos(request: Request, env: Env): Promise<Response> 
     </form>
     </section>
     <section class="admin-panel">
-    <h2>Published</h2>
+    <div class="admin-panel-head">
+      <h2>Published</h2>
+      <span class="admin-panel-meta">${videos.results.length}</span>
+    </div>
     <ul class="admin-video-list">
       ${videos.results
-        .map(
-          (v) => `<li>
-          <div>
+        .map((v) => {
+          const thumb = youtubeThumb(v.youtube_url);
+          return `<li>
+          <a class="admin-video-thumb" href="${escapeHtml(v.youtube_url)}" target="_blank" rel="noopener" tabindex="-1" aria-hidden="true">${
+            thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />` : menuIcon("videos")
+          }</a>
+          <div class="admin-video-main">
             <strong>${escapeHtml(v.title)}</strong>
-            <a href="${escapeHtml(v.youtube_url)}" target="_blank" rel="noopener">${escapeHtml(v.youtube_url)}</a>
+            <a href="${escapeHtml(v.youtube_url)}" target="_blank" rel="noopener">${escapeHtml(shortUrl(v.youtube_url))}</a>
+            <span class="admin-video-order">Order ${escapeHtml(String(v.sort_order))}</span>
           </div>
-          <button type="button" class="btn btn-ghost btn-danger" data-delete-video="${escapeHtml(v.id)}">Delete</button>
-        </li>`,
-        )
-        .join("") || "<li class=\"notice\">No videos yet.</li>"}
+          <button type="button" class="admin-icon-btn is-danger" data-delete-video="${escapeHtml(v.id)}" aria-label="Delete ${escapeHtml(v.title)}" title="Delete video">${menuIcon("trash")}</button>
+        </li>`;
+        })
+        .join("") || `<li class="admin-list-empty">No videos yet. Add the first one here.</li>`}
     </ul>
     </section>
     </div>
