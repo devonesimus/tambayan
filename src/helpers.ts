@@ -264,16 +264,49 @@ export function foldName(name: string): string {
     .toLowerCase();
 }
 
-/** The shorter full name sits inside the longer one. A shared first name alone does not count. */
+function nameTokens(name: string): string[] {
+  return foldName(name)
+    .replace(/\./g, "")
+    .split(" ")
+    .filter(Boolean);
+}
+
+function editDistance(a: string, b: string): number {
+  const rows = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) rows[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const swap = i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] ? rows[i - 2][j - 2] : Infinity;
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + cost, swap + 1);
+    }
+  }
+  return rows[a.length][b.length];
+}
+
+/** A shorter name, a dropped middle initial, a joined given name, or a one-letter spelling difference with the same surname. A shared first name alone does not count. */
 export function namesSuspect(a: string, b: string): boolean {
   const fa = foldName(a);
   const fb = foldName(b);
   if (!fa || !fb || fa === fb) return false;
   const [short, long] = fa.length <= fb.length ? [fa, fb] : [fb, fa];
-  if (short.length < 4) return false;
-  if (long.indexOf(short) !== 0) return false;
-  const next = long[short.length];
-  return next === " " || (next !== undefined && next !== " " && /[a-z0-9]/.test(next));
+  if (short.length >= 4 && long.startsWith(short)) {
+    const next = long[short.length];
+    if (next === " " || (next !== undefined && /[a-z0-9]/.test(next))) return true;
+  }
+  if (fa.replace(/ /g, "") === fb.replace(/ /g, "")) return true;
+  const ta = nameTokens(a).filter((token) => token.length > 1);
+  const tb = nameTokens(b).filter((token) => token.length > 1);
+  if (ta.length < 2 || tb.length < 2) return false;
+  if (ta.join(" ") === tb.join(" ")) return true;
+  const [fewer, more] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+  const lastA = fewer[fewer.length - 1];
+  const lastB = more[more.length - 1];
+  if (lastA !== lastB || lastA.length < 4) return false;
+  const firstA = fewer[0];
+  const firstB = more[0];
+  if (firstA.length < 5 || firstB.length < 5 || editDistance(firstA, firstB) !== 1) return false;
+  return fewer.slice(1, -1).every((token) => more.slice(1, -1).includes(token));
 }
 
 export function personCompleteness(row: {
