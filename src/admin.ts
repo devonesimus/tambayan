@@ -1040,7 +1040,7 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
   const minuteOptions = ["00", "15", "30", "45"]
     .map((m) => `<option value="${m}" ${when.minute === m ? "selected" : ""}>${m}</option>`)
     .join("");
-  const formTitle = editing ? "Edit event" : "Create event";
+  const formTitle = editing ? "Edit event" : "Create Tambayan event";
   const body = `
     <header class="admin-pagehead">
       <h1>Events</h1>

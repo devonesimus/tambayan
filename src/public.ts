@@ -27,6 +27,33 @@ import {
   type VideoRow,
 } from "./helpers";
 import { layout, shareButtons } from "./layout";
+import { dayLabel, directionsUrl, gatheringPhase, timeWindow } from "./gatherings";
+
+type PhotoPreview = { key: string; caption: string | null };
+
+/** The first few photos of a gathering, for the thank-you card. Empty when nothing has been uploaded. */
+async function galleryPreview(env: Env, eventId: string, limit = 3): Promise<PhotoPreview[]> {
+  const rows = await env.DB.prepare(
+    `SELECT r2_key, caption FROM gallery_images WHERE event_id = ? ORDER BY sort_order ASC, created_at ASC LIMIT ?`,
+  )
+    .bind(eventId, limit)
+    .all<{ r2_key: string; caption: string | null }>();
+  return rows.results.map((row) => ({ key: row.r2_key, caption: row.caption }));
+}
+
+/** "Facebook" as a blue pill. It uses the site's one configured page link, so it always matches the footer. */
+function facebookPill(env: Env): string {
+  return `<a class="fb-pill" href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>`;
+}
+
+/** A small photo strip that links to the gathering's gallery. */
+function photoThumbs(preview: PhotoPreview[], slug: string, title: string, className: string): string {
+  if (preview.length === 0) return "";
+  const images = preview
+    .map((photo) => `<img src="/api/media/${encodeURIComponent(photo.key)}" alt="" loading="lazy" decoding="async" />`)
+    .join("");
+  return `<a class="${className}" href="/gallery/${encodeURIComponent(slug)}" aria-label="See the photos from ${escapeHtml(title)}" style="--n:${preview.length}">${images}</a>`;
+}
 
 export async function renderHome(request: Request, env: Env): Promise<Response> {
   const event = await getHomeEvent(env.DB);
@@ -34,23 +61,61 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   const regState = publicRegistrationState(openEvent);
   const base = siteBase(env, request);
 
-  const title = event ? eventAnnouncementTitle(event) : "OFW Tambayan SG";
-  const bodyText = event
-    ? eventAnnouncementBody(event) ||
-      "Every last Sunday — fellowship, worship & community with fellow OFWs in Singapore."
-    : "Every last Sunday — fellowship, worship & community with fellow OFWs in Singapore.";
+  // Before the gathering, during it, or after it. A gathering that is still in progress is not "over".
+  const phase = event && event.status !== "draft" ? gatheringPhase(event.held_at) : null;
+  const live = phase === "live";
+  const after = phase === "after";
+  const preview = after && event ? await galleryPreview(env, event.id) : [];
+  const title = live
+    ? "We’re gathering today"
+    : after
+      ? "Thank you for joining us"
+      : event
+        ? eventAnnouncementTitle(event)
+        : "OFW Tambayan SG";
+  const bodyText = live
+    ? "We’re gathering today. It’s free to join."
+    : after
+      ? "Thank you for joining us. Keep checking this page or our Facebook for the next Tambayan. Join us next time, it’s free!"
+      : event
+        ? eventAnnouncementBody(event) ||
+          "Every last Sunday — fellowship, worship & community with fellow OFWs in Singapore."
+        : "Every last Sunday — fellowship, worship & community with fellow OFWs in Singapore.";
   const when = event ? formatEventWhen(event.held_at) : "Every last Sunday, 2–4 PM";
-  const headline = event ? formatEventHeadline(event.held_at) : "EVERY LAST SUNDAY · 2–4 PM";
+  const headline = live || after ? title : event ? formatEventHeadline(event.held_at) : "EVERY LAST SUNDAY · 2–4 PM";
   const where = event ? eventVenue(event, env) : env.DEFAULT_LOCATION;
   // Organisers' announcement for this event, shown in the hero when they wrote one.
-  const announcementTitle = (event?.announcement_title || "").trim();
-  const announcementBody = event ? eventAnnouncementBody(event) : "";
+  const announcementTitle = live || after ? "" : (event?.announcement_title || "").trim();
+  const announcementBody = live || after ? "" : event ? eventAnnouncementBody(event) : "";
+  const heroLine =
+    live && event
+      ? `Today · ${timeWindow(event.held_at)}`
+      : after && event
+        ? `${dayLabel(event.held_at)} was a joy.`
+        : "";
+  const heroNext = after ? `Keep checking this page or our ${facebookPill(env)} for the next Tambayan.` : "";
+  // Before and during a gathering the badge reassures. After one it invites people back.
+  const freeLabel = after ? "Join us next time! It’s free!" : "Free to join";
 
   let ctaLabel = "Coming soon";
   let ctaHref: string | null = null;
-  if (regState === "open") {
+  let ctaExternal = false;
+  if (live) {
+    ctaLabel = "Get directions";
+    ctaHref = directionsUrl(where);
+    ctaExternal = true;
+  } else if (regState === "open") {
     ctaLabel = "Register";
     ctaHref = "/register";
+  } else if (after && event) {
+    if (preview.length > 0) {
+      ctaLabel = "See the photos";
+      ctaHref = `/gallery/${encodeURIComponent(event.slug)}`;
+    } else {
+      ctaLabel = "Follow for the next date";
+      ctaHref = env.FACEBOOK_URL;
+      ctaExternal = true;
+    }
   } else if (regState === "closed" || (event && event.status !== "draft")) {
     ctaLabel = "Registration closed";
     ctaHref = "/register";
@@ -60,7 +125,7 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   }
 
   const cta = ctaHref
-    ? `<a class="btn btn-hero" href="${ctaHref}">${escapeHtml(ctaLabel)}</a>`
+    ? `<a class="btn btn-hero" href="${escapeHtml(ctaHref)}"${ctaExternal ? ` target="_blank" rel="noopener noreferrer"` : ""}>${escapeHtml(ctaLabel)}</a>`
     : `<span class="btn btn-hero is-disabled" aria-disabled="true">${escapeHtml(ctaLabel)}</span>`;
 
   const photos = await renderPhotoRow(env);
@@ -94,18 +159,22 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
             <h1 id="hero-date" class="hero-date">${escapeHtml(headline)}</h1>
           </div>
           ${
-            announcementBody
-              ? `<p class="hero-line hero-announcement">${escapeHtml(announcementBody)}</p>`
-              : `<p class="hero-line">Every last Sunday — fellowship, worship &amp; community</p>`
+            heroLine
+              ? `<p class="hero-line">${escapeHtml(heroLine)}</p>`
+              : announcementBody
+                ? `<p class="hero-line hero-announcement">${escapeHtml(announcementBody)}</p>`
+                : `<p class="hero-line">Every last Sunday — fellowship, worship &amp; community</p>`
           }
+          ${heroNext ? `<p class="hero-next">${heroNext}</p>` : ""}
+          ${event ? photoThumbs(preview, event.slug, event.title, "hero-thumbs") : ""}
           <p class="hero-venue">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
-          <div class="hero-cta">${cta}<span class="hero-free"><svg class="hero-free-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V14a2 2 0 0 0 0-4z"/><path d="M14 6.5v11" stroke-dasharray="1.6 2"/></svg><span>Free to join</span></span></div>
+          <div class="hero-cta">${cta}<span class="hero-free${after ? " hero-free--again" : ""}"><svg class="hero-free-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V14a2 2 0 0 0 0-4z"/><path d="M14 6.5v11" stroke-dasharray="1.6 2"/></svg><span>${escapeHtml(freeLabel)}</span></span></div>
           <div class="hero-secondary">
             <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
             <span class="share-sep" aria-hidden="true">·</span>
             <a class="share-link" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(base)}" target="_blank" rel="noopener noreferrer">Share</a>
             <span class="share-sep" aria-hidden="true">·</span>
-            <a class="share-link" href="https://wa.me/?text=${encodeURIComponent(`Join us at OFW Tambayan SG — ${when} ${base}`)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+            <a class="share-link" href="https://wa.me/?text=${encodeURIComponent(after ? `See you at the next OFW Tambayan — ${base}` : live ? `Join us today at OFW Tambayan SG — ${base}` : `Join us at OFW Tambayan SG — ${when} ${base}`)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>
           </div>
         </div>
       </div>
@@ -236,14 +305,58 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
   const openEvent = await getOpenEvent(env.DB);
   const state = publicRegistrationState(openEvent);
 
+  const upcoming = openEvent
+    ? null
+    : await env.DB.prepare(
+        `SELECT id FROM events
+         WHERE status IN ('open', 'draft')
+           AND datetime(held_at) >= datetime('now')
+         LIMIT 1`,
+      ).first<{ id: string }>();
+  const recent = openEvent
+    ? null
+    : await env.DB.prepare(
+        `SELECT * FROM events
+         WHERE status IN ('open', 'closed')
+         ORDER BY held_at DESC
+         LIMIT 1`,
+      ).first<EventRow>();
+  const recentPhase = recent && state !== "open" && !upcoming ? gatheringPhase(recent.held_at) : null;
+  const isLive = recentPhase === "live";
+  const betweenGatherings = recentPhase === "after";
+
   let statusPanel = "";
-  if (state !== "open") {
-    const recent = await env.DB.prepare(
-      `SELECT * FROM events
-       WHERE status IN ('open', 'closed')
-       ORDER BY held_at DESC
-       LIMIT 1`,
-    ).first<EventRow>();
+  if ((betweenGatherings || isLive) && recent) {
+    const facebook = `<a class="btn btn-hero-ghost" href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Follow on Facebook</a>`;
+    if (isLive) {
+      const venue = eventVenue(recent, env);
+      statusPanel = `
+      <div class="status-panel status-panel-soon status-panel-rich" role="status">
+        <p class="status-panel-kicker">We’re gathering today</p>
+        <p class="status-panel-body">Today · ${escapeHtml(timeWindow(recent.held_at))} · ${escapeHtml(venue)}. Sign-up for this gathering has closed.</p>
+        <div class="status-panel-actions">
+          <a class="btn btn-hero" href="${escapeHtml(directionsUrl(venue))}" target="_blank" rel="noopener noreferrer">Get directions</a>
+          ${facebook}
+        </div>
+      </div>`;
+    } else {
+      const preview = await galleryPreview(env, recent.id);
+      const photosButton =
+        preview.length > 0
+          ? `<a class="btn btn-hero" href="/gallery/${escapeHtml(encodeURIComponent(recent.slug))}">See the photos</a>`
+          : "";
+      statusPanel = `
+      <div class="status-panel status-panel-soon status-panel-rich" role="status">
+        <p class="status-panel-kicker">Thank you for joining us</p>
+        <p class="status-panel-body">${escapeHtml(dayLabel(recent.held_at))} was a joy. Keep checking this page or our ${facebookPill(env)} for the next Tambayan. Join us next time, it’s free!</p>
+        ${photoThumbs(preview, recent.slug, recent.title, "status-thumbs")}
+        <div class="status-panel-actions">
+          ${photosButton || facebook.replace("btn-hero-ghost", "btn-hero")}
+          ${photosButton ? facebook : ""}
+        </div>
+      </div>`;
+    }
+  } else if (state !== "open") {
     const when = recent ? formatEventWhen(recent.held_at) : null;
     const isComingSoon = state === "none";
     const heading = isComingSoon ? "Coming soon" : "Registration closed";
@@ -328,7 +441,11 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
         <p class="lede">${
           state === "open"
             ? "Sign up for the next tambayan session. It’s free."
-            : "Registration opens with each published gathering. It’s free."
+            : betweenGatherings
+              ? "Registration opens once the next date is announced."
+              : isLive
+                ? "Sign-up for today’s gathering has closed."
+                : "Registration opens with each published gathering. It’s free."
         }</p>
       </header>
       ${formBlock}
@@ -343,7 +460,11 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
       description:
         state === "open" && openEvent
           ? `Register for ${openEvent.title} — ${when}`
-          : state === "none"
+          : betweenGatherings
+            ? "Thank you for joining us. Registration opens once the next date is announced. It’s free."
+            : isLive
+              ? "We’re gathering today. Sign-up for this gathering has closed."
+              : state === "none"
             ? "Registration opens soon for OFW Tambayan SG."
             : "Registration is currently closed for OFW Tambayan SG.",
       og: {

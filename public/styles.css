@@ -668,6 +668,9 @@ a:hover { color: var(--accent); }
   max-width: 22rem;
 }
 
+/* Keep a short heading from leaving one word alone on its second line */
+.hero-date,
+.status-panel-kicker { text-wrap: balance; }
 .hero-head { margin: 0 0 1rem; }
 .hero-head .hero-date { margin: 0; }
 .hero-kicker {
@@ -748,6 +751,19 @@ a:hover { color: var(--accent); }
   animation: hero-free-sheen 5s ease-in-out 1.4s infinite;
   pointer-events: none;
 }
+/* After a gathering the badge invites people back: capitals, and free to wrap on a very narrow phone */
+.hero-free.hero-free--again {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: normal;
+  line-height: 1.25;
+}
+@media (max-width: 360px) {
+  .hero-free.hero-free--again { font-size: 0.74rem; letter-spacing: 0.04em; }
+}
+@media (max-width: 340px) {
+  .hero-free.hero-free--again { font-size: 0.68rem; letter-spacing: 0.02em; padding-inline: 0.6rem 0.7rem; }
+}
 @keyframes hero-free-in {
   from { opacity: 0; transform: translateX(-6px) scale(0.9); }
   to { opacity: 1; transform: none; }
@@ -787,6 +803,72 @@ a:hover { color: var(--accent); }
   opacity: 0.88;
   filter: none;
 }
+
+/* After a gathering: a warm thank-you with a few photos, and a quiet line about the next date */
+.hero-next {
+  margin: -0.4rem 0 0.95rem;
+  max-width: 22rem;
+  color: rgba(245, 244, 244, 0.74);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+/* "Facebook" inside a sentence, as a blue pill. #1a6ddd keeps white text at 4.9:1; the ring lifts it off the navy card. */
+.fb-pill {
+  display: inline-block;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+  background: #1a6ddd;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+  color: #fff;
+  font-weight: 650;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: filter 0.15s ease;
+}
+.fb-pill:hover { filter: brightness(1.12); color: #fff; text-decoration: none; }
+.fb-pill:focus-visible { outline: 2px solid var(--ofw-orange); outline-offset: 2px; }
+.status-panel a.fb-pill,
+.status-panel a.fb-pill:hover { color: #fff; text-decoration: none; }
+
+.hero-thumbs,
+.status-thumbs {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0 0 1.05rem;
+  text-decoration: none;
+}
+.hero-thumbs img,
+.status-thumbs img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: filter 0.2s ease;
+}
+.hero-thumbs:hover img,
+.status-thumbs:hover img { filter: brightness(1.07); }
+.hero-thumbs:focus-visible,
+.status-thumbs:focus-visible { outline: 2px solid var(--ofw-orange); outline-offset: 3px; border-radius: 10px; }
+.btn.btn-hero-ghost {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.35rem;
+  border: 1px solid rgba(245, 244, 244, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ofw-offwhite);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 650;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.btn.btn-hero-ghost:hover { border-color: rgba(245, 244, 244, 0.75); background: rgba(255, 255, 255, 0.06); color: #fff; }
 
 .home-hero .hero-secondary {
   display: flex;
@@ -1076,6 +1158,17 @@ h1 {
   text-underline-offset: 0.15em;
 }
 .status-panel a:hover { color: #fff; }
+.status-panel-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.3rem; }
+.status-panel a.btn { text-decoration: none; }
+.status-panel a.btn-hero,
+.status-panel a.btn-hero:hover { color: var(--ofw-navy); }
+.status-panel a.btn-hero-ghost,
+.status-panel a.btn-hero-ghost:hover { color: var(--ofw-offwhite); }
+.status-panel-rich .status-panel-body { margin-bottom: 1.05rem; }
+@media (max-width: 480px) {
+  .status-panel { max-width: none; }
+  .status-panel-actions .btn { flex: 1 1 100%; min-height: 2.9rem; }
+}
 .status-panel-soon {
   background: var(--ofw-navy);
 }
@@ -4080,6 +4173,8 @@ a.report-step:hover { border-color: var(--accent); color: var(--accent-deep); }
     margin-bottom: clamp(0.8rem, 2.2vh, 1.4rem);
     font-size: 0.84rem;
   }
+  .page-home .hero-thumbs { display: none; }
+  .page-home .hero-next { margin: -0.3rem 0 clamp(0.6rem, 1.8vh, 1rem); font-size: 0.8rem; }
   .page-home .hero-free { padding-block: clamp(0.32rem, 0.8vh, 0.42rem); font-size: 0.82rem; }
   .page-home .hero-cta { margin-bottom: clamp(0.7rem, 2vh, 1.25rem); }
   .page-home .home-hero .hero-secondary { padding-top: clamp(0.6rem, 1.6vh, 0.95rem); }
