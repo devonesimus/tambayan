@@ -40,6 +40,20 @@ import {
   type VideoRow,
 } from "./helpers";
 import { layout } from "./layout";
+import {
+  analyze,
+  bucketize,
+  followUp,
+  inRange,
+  renderTrends,
+  reportTabs,
+  resolveRange,
+  summarize,
+  trendsCsv,
+  type AppearanceRow,
+  type Gathering,
+  type Grain,
+} from "./reports";
 
 async function recordAudit(
   env: Env,
@@ -80,6 +94,7 @@ const menuIconPaths: Record<string, string> = {
   people: `<circle cx="12" cy="8" r="3.2"/><path d="M5 19.5c.8-3.2 3.2-5 7-5s6.2 1.8 7 5"/>`,
   gallery: `<rect x="3" y="3.5" width="18" height="17" rx="2"/><circle cx="8.5" cy="9" r="1.8"/><path d="m21 15.5-5-5-9.5 10"/>`,
   videos: `<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m10 9 5 3-5 3z"/>`,
+  reports: `<path d="M4 19.5V11M10 19.5V4.5M16 19.5V8.5M21 19.5H3"/>`,
   activity: `<path d="M3 12h4l2.5-6.5 5 13L17 12h4"/>`,
   password: `<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>`,
   site: `<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>`,
@@ -113,6 +128,7 @@ function adminShell(
     ["dashboard", "/admin", "Dashboard"],
     ["events", "/admin/events", "Events"],
     ["registrations", "/admin/registrations", "Registrations"],
+    ["reports", "/admin/reports", "Reports"],
     ["people", "/admin/people", "People"],
     ["gallery", "/admin/gallery", "Gallery"],
     ["videos", "/admin/videos", "Videos"],
@@ -327,6 +343,8 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     return new Response(null, { status: 302, headers: { Location: "/admin/events" } });
   }
   if (path === "/admin/registrations") return renderRegistrations(request, env);
+  if (path === "/admin/reports") return renderReports(request, env);
+  if (path === "/admin/reports.csv") return reportsCsv(request, env);
   if (path === "/admin/people") return renderPeople(request, env);
   if (path === "/admin/gallery") return handleAdminGallery(request, env);
   if (path === "/admin/videos") return handleAdminVideos(request, env);
@@ -589,6 +607,301 @@ async function renderActivity(request: Request, env: Env): Promise<Response> {
       </div>
     </section>`;
   return html(adminShell(env, request, "Activity", body, "activity"));
+}
+
+function sgtYmd(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function shortDay(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-SG", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  })
+    .format(new Date(Date.UTC(y, m - 1, d)))
+    .replace("Sept", "Sep");
+}
+
+function reportRows(rows: { label: string; value: number }[]): string {
+  const max = Math.max(1, ...rows.map((row) => row.value));
+  return rows
+    .map((row) => {
+      const width = Math.round((row.value / max) * 100);
+      return `<div class="report-row">
+        <span class="report-row-label">${escapeHtml(row.label)}</span>
+        <span class="report-track" aria-hidden="true"><span class="report-fill" style="width:${width}%"></span></span>
+        <span class="report-row-value">${row.value}</span>
+      </div>`;
+    })
+    .join("");
+}
+
+/** Every gathering with guests, with first-time and returning worked out, plus who appeared where. */
+async function loadReportData(env: Env): Promise<{ all: Gathering[]; appearances: AppearanceRow[] }> {
+  const rows = await env.DB.prepare(
+    `SELECT e.id, e.title, e.held_at, e.attendance_tracked AS tracked,
+            COUNT(r.id) AS registered,
+            COALESCE(SUM(r.attended), 0) AS attended,
+            COALESCE(SUM(CASE WHEN r.source = 'public' THEN 1 ELSE 0 END), 0) AS online,
+            COALESCE(SUM(CASE WHEN r.source = 'admin' THEN 1 ELSE 0 END), 0) AS walkin,
+            COALESCE(SUM(CASE WHEN r.source = 'import' THEN 1 ELSE 0 END), 0) AS imported
+     FROM events e JOIN registrations r ON r.event_id = e.id
+     GROUP BY e.id
+     ORDER BY e.held_at`,
+  ).all<{
+    id: string;
+    title: string;
+    held_at: string;
+    tracked: number;
+    registered: number;
+    attended: number;
+    online: number;
+    walkin: number;
+    imported: number;
+  }>();
+  const appearances = await env.DB.prepare(
+    `SELECT person_id, event_id, attended FROM registrations WHERE person_id IS NOT NULL`,
+  ).all<AppearanceRow>();
+  return {
+    all: analyze(
+      rows.results.map((row) => ({ ...row, tracked: row.tracked === 1 })),
+      appearances.results,
+    ),
+    appearances: appearances.results,
+  };
+}
+
+async function reportsCsv(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const today = singaporeDay(new Date().toISOString());
+  const { all } = await loadReportData(env);
+  const range = resolveRange({ range: url.searchParams.get("range"), from: url.searchParams.get("from"), to: url.searchParams.get("to") }, all, today);
+  return new Response(trendsCsv(inRange(all, range, today)), {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="ofw-tambayan-gatherings-${range.from}-to-${range.to}.csv"`,
+      "cache-control": "no-store",
+    },
+  });
+}
+
+async function renderTrendsPage(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const today = singaporeDay(new Date().toISOString());
+  const { all, appearances } = await loadReportData(env);
+  const range = resolveRange({ range: url.searchParams.get("range"), from: url.searchParams.get("from"), to: url.searchParams.get("to") }, all, today);
+  const by = url.searchParams.get("by");
+  const grain: Grain = by === "month" || by === "year" ? by : "gathering";
+  const list = inRange(all, range, today);
+  const people = await env.DB.prepare(`SELECT id, name FROM people`).all<{ id: string; name: string }>();
+  const body = renderTrends({
+    range,
+    grain,
+    today,
+    all,
+    list,
+    buckets: bucketize(list, grain),
+    summary: summarize(list, appearances),
+    followUp: followUp(all, appearances, today),
+    names: new Map(people.results.map((person) => [person.id, person.name])),
+    duplicatesPending: (await suspectMap(env)).size,
+  });
+  return html(adminShell(env, request, "Reports", body, "reports"));
+}
+
+async function renderReports(request: Request, env: Env): Promise<Response> {
+  if (new URL(request.url).searchParams.get("view") === "trends") return renderTrendsPage(request, env);
+
+  const today = singaporeDay(new Date().toISOString());
+  const events = await env.DB.prepare(
+    `SELECT id, title, held_at, status, attendance_tracked AS tracked FROM events ORDER BY held_at DESC`,
+  ).all<{ id: string; title: string; held_at: string; status: string; tracked: number }>();
+  const requested = new URL(request.url).searchParams.get("event_id") || "";
+  // Open on the latest gathering that has happened (today counts), not one that is still weeks away.
+  const selected =
+    events.results.find((event) => event.id === requested) ||
+    events.results.find((event) => singaporeDay(event.held_at) <= today) ||
+    events.results[0];
+
+  if (!selected) {
+    const empty = `
+      <header class="admin-pagehead">
+        <h1>Reports</h1>
+        <p>How gatherings are doing, one at a time and over time.</p>
+      </header>
+      ${reportTabs("gathering")}
+      <p class="notice">Create an event before there is anything to report.</p>`;
+    return html(adminShell(env, request, "Reports", empty, "reports"));
+  }
+
+  const position = events.results.findIndex((event) => event.id === selected.id);
+  const newer = events.results[position - 1];
+  const older = events.results[position + 1];
+  const step = (event: { id: string } | undefined, label: string, glyph: string) =>
+    event
+      ? `<a class="report-step" href="/admin/reports?event_id=${encodeURIComponent(event.id)}" aria-label="${label}" title="${label}">${glyph}</a>`
+      : `<span class="report-step is-off" aria-hidden="true">${glyph}</span>`;
+  const picker = `<form class="report-picker" method="get" action="/admin/reports">
+      ${step(older, "Previous gathering", "‹")}
+      <label>
+        <span class="visually-hidden">Gathering</span>
+        <select name="event_id" onchange="this.form.requestSubmit()">
+          ${events.results
+            .map(
+              (event) =>
+                `<option value="${escapeHtml(event.id)}"${event.id === selected.id ? " selected" : ""}>${escapeHtml(shortEventTitle(event.title))} · ${escapeHtml(formatEventWhen(event.held_at))}</option>`,
+            )
+            .join("")}
+        </select>
+      </label>
+      ${step(newer, "Next gathering", "›")}
+      <noscript><button type="submit" class="btn btn-ghost btn-sm">Show</button></noscript>
+    </form>`;
+
+  const { all } = await loadReportData(env);
+  const at = all.findIndex((g) => g.id === selected.id);
+  const stat = at >= 0 ? all[at] : undefined;
+  const before = at > 0 ? all[at - 1] : null;
+  const tracked = selected.tracked === 1;
+
+  const [days, walkins] = await Promise.all([
+    env.DB.prepare(
+      `SELECT date(created_at, '+8 hours') AS day, COUNT(*) AS c
+       FROM registrations
+       WHERE event_id = ? AND source = 'public'
+       GROUP BY day`,
+    )
+      .bind(selected.id)
+      .all<{ day: string; c: number }>(),
+    env.DB.prepare(`SELECT COUNT(*) AS c FROM registrations WHERE event_id = ? AND source = 'admin'`)
+      .bind(selected.id)
+      .first<{ c: number }>(),
+  ]);
+
+  const registered = stat?.guests || 0;
+  const attended = stat?.attended || 0;
+  const marked = Boolean(stat?.marked);
+  const guestListLink = `<p class="report-foot"><a href="/admin/registrations?event_id=${encodeURIComponent(selected.id)}">Open the guest list</a></p>`;
+  const delta =
+    before && stat
+      ? (() => {
+          const change = stat.guests - before.guests;
+          const sign = change > 0 ? "+" : change < 0 ? "−" : "±";
+          return `<p class="report-delta">${sign}${Math.abs(change)} on the list vs ${escapeHtml(shortEventTitle(before.title))}</p>`;
+        })()
+      : "";
+
+  let headline: string;
+  if (registered === 0) {
+    headline = `<p class="report-note">No registrations yet.</p>${guestListLink}`;
+  } else if (!tracked) {
+    headline = `<div class="report-figures"><p><strong>${registered}</strong><span>On the guest list</span></p></div>
+      ${delta}
+      <p class="report-note">Attendance wasn't taken for this gathering, so this is the guest list from the spreadsheet, not a headcount.</p>
+      ${guestListLink}`;
+  } else if (!marked) {
+    headline = `<div class="report-figures">
+        <p><strong>${registered}</strong><span>Registered</span></p>
+        <p><strong>—</strong><span>Came</span></p>
+        <p><strong>—</strong><span>Show-up</span></p>
+      </div>
+      ${delta}
+      <p class="report-note">Attendance hasn't been marked yet. Open the guest list to mark who came.</p>
+      ${guestListLink}`;
+  } else {
+    const notYet = Math.max(0, registered - attended);
+    headline = `<div class="report-figures">
+        <p><strong>${registered}</strong><span>Registered</span></p>
+        <p><strong>${attended}</strong><span>Came</span></p>
+        <p><strong>${Math.round((attended / registered) * 100)}%</strong><span>Show-up</span></p>
+      </div>
+      ${delta}
+      ${reportRows([
+        { label: "Came", value: attended },
+        { label: "Did not come", value: notYet },
+      ])}
+      ${guestListLink}`;
+  }
+
+  const returningBody =
+    !stat || stat.guests === 0
+      ? `<p class="report-note">No registrations yet.</p>`
+      : stat.baseline
+        ? `<p class="report-note">This is the first gathering on record, so everyone looks new. Returning guests show from the next one.</p>`
+        : reportRows([
+            { label: "Returning", value: stat.returning },
+            { label: "First time", value: stat.firstTime },
+          ]);
+
+  const signupBody =
+    registered === 0
+      ? `<p class="report-note">No registrations yet.</p>`
+      : reportRows([
+          { label: "Online", value: stat?.online || 0 },
+          { label: "Walk-in", value: stat?.walkin || 0 },
+          ...(stat?.imported ? [{ label: "Imported", value: stat.imported }] : []),
+        ]);
+
+  const eventDay = sgtYmd(selected.held_at);
+  const windowStart = shiftYmd(eventDay, -21);
+  const byDay = new Map(days.results.map((row) => [row.day, row.c]));
+  const series: { ymd: string; count: number }[] = [];
+  for (let i = 0; i <= 21; i++) {
+    const ymd = shiftYmd(windowStart, i);
+    series.push({ ymd, count: byDay.get(ymd) || 0 });
+  }
+  const onlineInWindow = series.reduce((sum, day) => sum + day.count, 0);
+  const dayMax = Math.max(1, ...series.map((day) => day.count));
+  const timingBars = series
+    .map((day, index) => {
+      const height = Math.round((day.count / dayMax) * 100);
+      const showLabel = index === 0 || index === series.length - 1 || index % 7 === 0;
+      return `<div class="report-day" title="${escapeHtml(shortDay(day.ymd))} · ${day.count}">
+        <span class="report-day-fill" style="height:${height}%"></span>
+        <span class="report-day-label">${showLabel ? escapeHtml(shortDay(day.ymd)) : ""}</span>
+      </div>`;
+    })
+    .join("");
+  const timingBody =
+    onlineInWindow === 0
+      ? `<p class="report-note">No online sign-ups in the 21 days before this gathering.</p>
+         <p class="report-foot">Walk-ins: ${walkins?.c || 0}</p>`
+      : `<div class="report-days" aria-label="Online sign-ups by day">${timingBars}</div>
+         <p class="report-foot">${onlineInWindow} online in this window · Walk-ins: ${walkins?.c || 0}</p>`;
+
+  // Sign-up channels and timing only mean something where people actually signed up through the site.
+  const cards = [
+    `<section class="admin-panel report-wide"><h2>${tracked ? "Show-up" : "Guest list"}</h2>${headline}</section>`,
+    `<section class="admin-panel${tracked ? "" : " report-wide"}"><h2>Returning guests</h2>${returningBody}</section>`,
+    tracked ? `<section class="admin-panel"><h2>How they signed up</h2>${signupBody}</section>` : "",
+    tracked ? `<section class="admin-panel report-wide"><h2>When they signed up</h2>${timingBody}</section>` : "",
+  ].join("");
+
+  const body = `
+    <header class="admin-pagehead">
+      <h1>Reports</h1>
+      <p>How gatherings are doing, one at a time and over time.</p>
+    </header>
+    ${reportTabs("gathering")}
+    ${picker}
+    <div class="report-grid">${cards}</div>
+    <p class="report-foot report-cross"><a href="/admin/reports?view=trends">See how gatherings compare over time →</a></p>`;
+
+  return html(adminShell(env, request, "Reports", body, "reports"));
 }
 
 async function renderDashboard(request: Request, env: Env): Promise<Response> {
