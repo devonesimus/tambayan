@@ -2880,13 +2880,15 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem 1rem;
-  margin: 0 0 0.9rem;
+  margin: 0 0 1.4rem;
 }
-.report-export { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+.report-export { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
 .report-names { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--muted); font-size: 0.82rem; cursor: pointer; }
 .report-names input { width: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: var(--ofw-navy); cursor: pointer; }
 .report-csv { color: var(--muted); font-size: 0.82rem; text-underline-offset: 3px; }
-.report-export-status { min-height: 1.1em; color: var(--muted); font-size: 0.82rem; }
+/* The message floats under the buttons, so showing it never moves the controls. */
+.report-export-status { position: absolute; top: calc(100% + 0.3rem); right: 0; color: var(--muted); font-size: 0.82rem; white-space: nowrap; }
+.report-export-status:empty { display: none; }
 .report-export-status.is-error { color: var(--danger); }
 .report-range-label { margin: 0; color: var(--muted); font-size: 0.9rem; }
 .report-range-label strong { color: var(--ink); }
@@ -2942,6 +2944,7 @@ select:focus {
   .report-chart-narrow { display: block; }
   .rc-axis, .rc-val { font-size: 13px; }
   .report-toolbar { align-items: stretch; }
+  .report-export-status { left: 0; right: auto; }
   .report-seg { width: 100%; }
   .report-seg-item { flex: 1; text-align: center; padding-inline: 0.4rem; }
   .report-custom label { flex: 1 1 8rem; }
@@ -4603,6 +4606,22 @@ html[data-admin-theme="dark"] body.page-admin .site-footer a { color: inherit; }
 .ev-filter .segmented input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .admin-event-list li[hidden] { display: none; }
 .admin-event-list li[data-event] { cursor: pointer; }
+.admin-event-guests {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: start;
+  margin-top: 0.35rem;
+  padding: 0.12rem 0.65rem 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(39, 52, 107, 0.07);
+  color: var(--ofw-navy);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.admin-event-guests svg { width: 13px; height: 13px; flex: none; opacity: 0.75; }
+.admin-event-guests.is-none { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-weight: 500; }
 .admin-event-link { color: inherit; text-decoration: none; }
 .admin-event-link:hover strong,
 .admin-event-list li[data-event]:hover .admin-event-link strong { text-decoration: underline; text-decoration-color: rgba(39, 52, 107, 0.35); text-underline-offset: 3px; }
@@ -4754,3 +4773,5 @@ html[data-admin-theme="dark"] body.page-admin .site-footer a { color: inherit; }
 
 html[data-admin-theme="dark"] body.page-admin .hp-jump a:hover { background: rgba(244, 241, 234, 0.08); }
 html[data-admin-theme="dark"] body.page-admin .hp-frame { border-color: rgba(244, 241, 234, 0.14); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); }
+html[data-admin-theme="dark"] body.page-admin .admin-event-guests { background: rgba(244, 241, 234, 0.09); color: #d6e2ff; }
+html[data-admin-theme="dark"] body.page-admin .admin-event-guests.is-none { background: transparent; color: #b4bdd2; }

@@ -1045,7 +1045,7 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
                 <a class="admin-event-link" href="${guestsHref}" title="See the guest list"><strong>${escapeHtml(e.title)}</strong></a>
                 ${statusBadge(e)}
               </div>
-              <p class="admin-event-meta"><span>${escapeHtml(formatEventWhen(e.held_at))}</span><span>${escapeHtml(e.address)}</span><span>${e.guests} ${e.guests === 1 ? "guest" : "guests"}</span></p>
+              <p class="admin-event-meta"><span>${escapeHtml(formatEventWhen(e.held_at))}</span><span>${escapeHtml(e.address)}</span><span class="admin-event-guests${e.guests ? "" : " is-none"}">${menuIcon("registrations")}${e.guests === 0 ? "No guests yet" : `${e.guests} ${e.guests === 1 ? "guest" : "guests"}`}</span></p>
             </div>
             <div class="admin-row-actions">
               <a class="btn btn-ghost btn-sm" data-edit="${escapeHtml(e.id)}" href="/admin/events?id=${escapeHtml(e.id)}#event-form">${e.id === editing?.id ? "Editing" : "Edit"}</a>

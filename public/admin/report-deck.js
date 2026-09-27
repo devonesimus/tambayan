@@ -52,6 +52,87 @@
     const kicker = (slide, text, x, y, w) =>
       slide.addText(text.toUpperCase(), { x, y, w, h: 0.3, fontFace: BODY, fontSize: 10.5, bold: true, color: C.muted, charSpacing: 2, margin: 0, valign: "middle" });
 
+
+    // Charts are drawn from plain shapes and text, not chart objects. Every app shows those the same way,
+    // and Keynote does not always import a chart's data.
+    const niceTop = (max) => {
+      const target = Math.max(4, max) / 4;
+      const magnitude = Math.pow(10, Math.floor(Math.log10(target)));
+      const step = Math.ceil([1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((v) => v >= target) || target);
+      return { step, top: step * Math.ceil(Math.max(1, max) / step) };
+    };
+    const rect = (slide, x, y, w, h, color) => {
+      if (h <= 0.005) return;
+      slide.addShape(shape.rect, { x, y, w, h, fill: { color }, line: { color, width: 0 } });
+    };
+    const label = (slide, text, x, y, w, h, o) =>
+      slide.addText(String(text), Object.assign({ x, y, w, h, fontFace: BODY, fontSize: 10.5, color: C.muted, align: "center", valign: "middle", margin: 0, wrap: false }, o || {}));
+    /** Gridlines, the scale on the left and the legend underneath. Returns the plot area. */
+    const frameChart = (slide, x, y, w, h, max, legend) => {
+      const { top, step } = niceTop(max);
+      const plot = { x: x + 0.55, y: y + 0.3, w: w - 0.65, h: h - 0.3 - 0.5 - 0.4, top };
+      for (let v = 0; v <= top + 0.001; v += step) {
+        const yy = plot.y + plot.h - (v / top) * plot.h;
+        slide.addShape(shape.line, { x: plot.x, y: yy, w: plot.w, h: 0, line: { color: v === 0 ? "C9CFDD" : C.line, width: v === 0 ? 1 : 0.75 } });
+        label(slide, Math.round(v), x, yy - 0.12, 0.45, 0.24, { align: "right" });
+      }
+      const widths = legend.map((l) => 0.3 + l.name.length * 0.085 + 0.3);
+      let lx = plot.x + plot.w / 2 - widths.reduce((a, b) => a + b, 0) / 2;
+      legend.forEach((l, i) => {
+        rect(slide, lx, y + h - 0.27, 0.15, 0.15, l.color);
+        label(slide, l.name, lx + 0.22, y + h - 0.35, widths[i] - 0.22, 0.32, { align: "left", fontSize: 11 });
+        lx += widths[i];
+      });
+      return plot;
+    };
+    const axisLabels = (slide, plot, names, band) => {
+      const every = Math.ceil(names.length / Math.max(2, Math.floor(plot.w / 0.66)));
+      names.forEach((name, i) => {
+        if (i % every) return;
+        label(slide, name, plot.x + band * i + band / 2 - 0.4, plot.y + plot.h + 0.08, 0.8, 0.3, { fontSize: names.length > 20 ? 9.5 : 10.5 });
+      });
+    };
+    const stackedChart = (slide, x, y, w, h, buckets) => {
+      const parts = [
+        { name: "Returning", color: C.navy, get: (b) => b.returning },
+        { name: "First time", color: C.orange, get: (b) => Math.max(0, b.firstTime - Math.min(b.baselineGuests, b.firstTime)) },
+      ];
+      if (buckets.some((b) => b.baselineGuests > 0)) parts.push({ name: "First gathering on record", color: C.grey, get: (b) => Math.min(b.baselineGuests, b.firstTime) });
+      const plot = frameChart(slide, x, y, w, h, Math.max(0, ...buckets.map((b) => b.guests)), parts);
+      const band = plot.w / Math.max(1, buckets.length);
+      const bw = Math.min(0.72, band * 0.62);
+      buckets.forEach((b, i) => {
+        const bx = plot.x + band * i + (band - bw) / 2;
+        let top = plot.y + plot.h;
+        parts.forEach((part) => {
+          const value = part.get(b);
+          const height = (value / plot.top) * plot.h;
+          top -= height;
+          rect(slide, bx, top, bw, height, part.color);
+          if (buckets.length <= 12 && height >= 0.3) label(slide, value, bx, top, bw, height, { color: C.white, fontSize: 10.5 });
+        });
+        if (band >= 0.32) label(slide, b.guests, bx - 0.15, top - 0.28, bw + 0.3, 0.26, { color: C.ink, bold: true });
+      });
+      axisLabels(slide, plot, buckets.map((b) => b.label), band);
+    };
+    const pairChart = (slide, x, y, w, h, pairs) => {
+      const plot = frameChart(slide, x, y, w, h, Math.max(0, ...pairs.map((p) => p.listed)), [
+        { name: "On the list", color: C.soft },
+        { name: "Came", color: C.navy },
+      ]);
+      const band = plot.w / Math.max(1, pairs.length);
+      const bw = Math.min(0.5, band * 0.34);
+      pairs.forEach((p, i) => {
+        const cx = plot.x + band * i + band / 2;
+        [[p.listed, C.soft, cx - bw - 0.02], [p.attended, C.navy, cx + 0.02]].forEach(([value, color, bx], k) => {
+          const height = (value / plot.top) * plot.h;
+          rect(slide, bx, plot.y + plot.h - height, bw, height, color);
+          if (pairs.length <= 8 || (k === 1 && band >= 0.5)) label(slide, value, bx - 0.1, plot.y + plot.h - height - 0.27, bw + 0.2, 0.25, { color: C.ink, bold: k === 1 });
+        });
+      });
+      axisLabels(slide, plot, pairs.map((p) => p.label), band);
+    };
+
     const s = data.summary;
     const grainNoun = data.grain === "month" ? "month" : data.grain === "year" ? "year" : "gathering";
 
@@ -108,32 +189,16 @@
           ? "Returning and first-time guests at each gathering"
           : `Returning and first-time guests by ${grainNoun}, totalled across each ${grainNoun}'s gatherings`;
       heading(slide, "Guests on the list", sub);
-      const labels = data.buckets.map((b) => b.label);
-      const series = [
-        { name: "Returning", labels, values: data.buckets.map((b) => b.returning) },
-        { name: "First time", labels, values: data.buckets.map((b) => Math.max(0, b.firstTime - Math.min(b.baselineGuests, b.firstTime))) },
-      ];
-      const colors = [C.navy, C.orange];
-      if (data.buckets.some((b) => b.baselineGuests > 0)) {
-        series.push({ name: "First gathering on record", labels, values: data.buckets.map((b) => Math.min(b.baselineGuests, b.firstTime)) });
-        colors.push(C.grey);
-      }
-      const few = data.buckets.length <= 8;
-      slide.addChart(pptx.charts.BAR, series, {
-        x: M, y: 1.95, w: CONTENT_W, h: 4.3, barDir: "col", barGrouping: "stacked", barGapWidthPct: 55,
-        chartColors: colors, showLegend: true, legendPos: "b", legendFontFace: BODY, legendFontSize: 11, legendColor: C.muted,
-        catAxisLabelFontFace: BODY, catAxisLabelFontSize: 10.5, catAxisLabelColor: C.muted, catAxisLineShow: true,
-        valAxisLabelFontFace: BODY, valAxisLabelFontSize: 10.5, valAxisLabelColor: C.muted, valAxisLineShow: false, valAxisMinVal: 0,
-        valGridLine: { color: C.line, size: 0.75 }, catGridLine: { style: "none" },
-        showValue: few, dataLabelColor: C.white, dataLabelFontFace: BODY, dataLabelFontSize: 10.5, dataLabelFormatCode: "#,##0;;;",
-        altText: `Guests on the list for ${plural(data.buckets.length, grainNoun, grainNoun + "s")}, split into returning and first time.`,
-      });
+      stackedChart(slide, M, 1.95, CONTENT_W, 4.3, data.buckets);
       const notes = [];
       if (data.grain !== "gathering") notes.push(`Bars are totals for each ${grainNoun}. The average per gathering is in the table at the end.`);
       if (data.hasBaseline) notes.push("The first gathering on record is grey: everyone looks new only because nothing came before it.");
       if (data.anyUntracked) notes.push(`Attendance was only taken from ${data.attendanceFrom || "now"} on. Earlier gatherings show the guest list from the spreadsheet, not a headcount.`);
       if (notes.length) slide.addText(notes.join("  "), { x: M, y: 6.35, w: CONTENT_W, h: 0.5, fontFace: BODY, fontSize: 10.5, italic: true, color: C.muted, margin: 0, valign: "top" });
-      slide.addNotes("Returning = on the list at an earlier gathering. First time = the first time we have seen them.");
+      slide.addNotes(
+        "Returning = on the list at an earlier gathering. First time = the first time we have seen them.\n\nThe numbers: " +
+          data.buckets.map((b) => `${b.title}: ${b.guests} (${b.returning} returning, ${b.firstTime} first time)`).join("; ") + ".",
+      );
     }
 
     // 4. Who actually came
@@ -141,23 +206,7 @@
       const slide = pptx.addSlide({ masterName: "CONTENT" });
       heading(slide, "Who actually came", "The guest list next to the guests marked as attended");
       if (data.pairs.length) {
-        const labels = data.pairs.map((p) => p.label);
-        slide.addChart(
-          pptx.charts.BAR,
-          [
-            { name: "On the list", labels, values: data.pairs.map((p) => p.listed) },
-            { name: "Came", labels, values: data.pairs.map((p) => p.attended) },
-          ],
-          {
-            x: M, y: 1.95, w: 8.7, h: 4.45, barDir: "col", barGrouping: "clustered", barGapWidthPct: 60,
-            chartColors: [C.soft, C.navy], showLegend: true, legendPos: "b", legendFontFace: BODY, legendFontSize: 11, legendColor: C.muted,
-            catAxisLabelFontFace: BODY, catAxisLabelFontSize: 10.5, catAxisLabelColor: C.muted,
-            valAxisLabelFontFace: BODY, valAxisLabelFontSize: 10.5, valAxisLabelColor: C.muted, valAxisLineShow: false, valAxisMinVal: 0,
-            valGridLine: { color: C.line, size: 0.75 }, catGridLine: { style: "none" },
-            showValue: data.pairs.length <= 8, dataLabelColor: C.ink, dataLabelFontFace: BODY, dataLabelFontSize: 10.5, dataLabelPosition: "outEnd",
-            altText: "On the list compared with came, for each gathering where attendance was marked.",
-          },
-        );
+        pairChart(slide, M, 1.95, 8.7, 4.45, data.pairs);
         const x = M + 9.05;
         const w = CONTENT_W - 9.05;
         card(slide, x, 1.95, w, 4.45);
@@ -186,7 +235,10 @@
           { x: M + 2, y: 2.6, w: CONTENT_W - 4, h: 2.6, fontFace: BODY, fontSize: 18, color: C.ink, align: "center", valign: "middle", margin: 0 },
         );
       }
-      slide.addNotes("Came = guests marked as attended on the guest list. Show-up = came as a share of registered.");
+      slide.addNotes(
+        "Came = guests marked as attended on the guest list. Show-up = came as a share of registered." +
+          (data.pairs.length ? "\n\nThe numbers: " + data.pairs.map((p) => `${p.title}: ${p.attended} of ${p.listed} came`).join("; ") + "." : ""),
+      );
     }
 
     // 5. Regulars and people worth a check-in
@@ -260,8 +312,12 @@
           x: M, y: 1.95, w: CONTENT_W, colW, rowH: 0.42, valign: "middle", margin: [0, 0.14, 0, 0.14],
           border: { type: "solid", color: C.line, pt: 0.75 },
         });
-        if (perGathering && rows.some((r) => r[4] === "—") && page === pages - 1) {
-          slide.addText("A dash means attendance was not taken or has not been marked.", { x: M, y: 6.55, w: CONTENT_W, h: 0.3, fontFace: BODY, fontSize: 10.5, italic: true, color: C.muted, margin: 0 });
+        if (perGathering) {
+          const dash = rows.some((r) => r[4] === "—");
+          slide.addText(
+            "Came = guests marked as attended. Show-up = Came as a share of On the list." + (dash ? " A dash means attendance was not taken or has not been marked." : ""),
+            { x: M, y: 6.55, w: CONTENT_W, h: 0.3, fontFace: BODY, fontSize: 10.5, italic: true, color: C.muted, margin: 0 },
+          );
         }
       }
     }
@@ -274,10 +330,13 @@
     if (!button) return;
     const status = document.getElementById("deck-status");
     const names = document.getElementById("deck-names");
+    let clearTimer = 0;
     const say = (text, bad) => {
       if (!status) return;
       status.textContent = text;
       status.classList.toggle("is-error", Boolean(bad));
+      clearTimeout(clearTimer);
+      if (text && !bad && text === "Downloaded.") clearTimer = setTimeout(() => { status.textContent = ""; }, 5000);
     };
     const toDataUrl = (blob) =>
       new Promise((resolve) => {

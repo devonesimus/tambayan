@@ -512,7 +512,7 @@ export function renderTrends(view: TrendsView): string {
       <div class="report-seg" role="group" aria-label="Group by">${grains}</div>
       <div class="report-export">
         <button type="button" class="btn btn-ghost btn-sm" id="deck-export" data-query="${escapeHtml(deckParams.toString())}">Export PowerPoint</button>
-        <label class="report-names"><input type="checkbox" id="deck-names" /><span>Include names</span></label>
+        <label class="report-names" title="Adds guest names to the Regulars and Worth a check-in slide"><input type="checkbox" id="deck-names" /><span>Include names</span></label>
         <a class="report-csv" href="/admin/reports.csv?${csvParams.toString()}">CSV</a>
         <span id="deck-status" class="report-export-status" role="status" aria-live="polite"></span>
       </div>
