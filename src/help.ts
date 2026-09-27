@@ -68,7 +68,7 @@ const sections: Section[] = [
         id: "dashboard",
         q: "What is on the Dashboard?",
         a: `<ul>
-          <li><strong>Open for public</strong> is the event taking sign-ups right now, or <em>None</em>.</li>
+          <li><strong>Open for public</strong> is the event taking sign-ups right now, or <em>None</em>. Tap it to see that event's guest list.</li>
           <li><strong>Registrations</strong> is how many people are on that event's list.</li>
           <li><strong>Events</strong> is how many events exist in total.</li>
           <li><strong>Quick actions</strong> are shortcuts: add a walk-in, upload photos, add a short video, or preview the public Register page.</li>
@@ -114,10 +114,18 @@ const sections: Section[] = [
         shots: [{ name: "event-date", alt: "Choosing a date on the new event form", path: "/admin/events" }],
       },
       {
+        id: "event-find",
+        q: "How do I find an event in a long list?",
+        a: `<p>Above the list is a row of choices: <strong>All, Open, Closed, Draft</strong>. Tap one to show only those events. The title above the list follows your choice, for example <em>Closed events</em>.</p>
+        <p>The list shows five events at a time, newest first. Use <strong>Previous</strong> and <strong>Next</strong> at the bottom to see older ones. Each event also shows how many guests it has.</p>
+        <p>Tap an event to see its guest list. <strong>Edit</strong>, <strong>Open</strong>, <strong>Force close</strong> and the other buttons work as before.</p>`,
+        shots: [{ name: "events-filter", alt: "The Events list filtered to Closed events, with the choices and page buttons circled", path: "/admin/events" }],
+      },
+      {
         id: "event-open",
         q: "How do I open sign-ups for an event?",
         a: `<ol>
-          <li>Go to <strong>Events</strong> and find the event in the list.</li>
+          <li>Go to <strong>Events</strong> and find the event in the list. Use the <a href="#q-event-find">filter</a> if the list is long.</li>
           <li>Tap <strong>Open</strong> (for a Draft) or <strong>Reopen</strong> (for a Closed one).</li>
           <li>Tap OK when asked to confirm.</li>
         </ol>
@@ -171,7 +179,14 @@ const sections: Section[] = [
       {
         id: "event-delete",
         q: "Can I delete an event?",
-        a: `<p>There is no delete button, so guest lists and reports always stay complete. If you added an event by mistake, edit it into your next real gathering instead.</p>`,
+        a: `<p>Only an <strong>empty Draft</strong>: one that has no guests and no photos. That keeps guest lists and reports complete.</p>
+        <ol>
+          <li>Go to <strong>Events</strong> and tap <strong>Draft</strong> above the list.</li>
+          <li>Tap the small bin beside the event, then confirm. The bin only appears when the event can be deleted.</li>
+        </ol>
+        <p>Deleting cannot be undone. It also changes what guests see. If that draft was showing as <em>Coming soon</em>, the home page moves on to the next upcoming event, or to your most recent one if there is none. The Register page changes from <em>Coming soon</em> to a closed message when nothing else is upcoming.</p>
+        <p>An event with guests or photos cannot be deleted. Remove them first, or edit the event into your next real gathering instead.</p>`,
+        shots: [{ name: "events-delete", alt: "The Draft events list with the delete bin circled", path: "/admin/events" }],
       },
       {
         id: "guest-view",
@@ -197,6 +212,7 @@ const sections: Section[] = [
           <li>Go to <strong>Registrations</strong>.</li>
           <li>Pick an event at the top. The open event is chosen for you. Choose <strong>All events</strong> to see everyone.</li>
         </ol>
+        <p>You can also tap an event on the <strong>Events</strong> page to jump straight to its guest list.</p>
         <p>The newest sign-ups come first, 20 to a page. Use <strong>Show</strong> at the bottom to see more per page. On a computer, tap a column heading such as <strong>Name</strong> to sort.</p>`,
         shots: [{ name: "registrations", alt: "The guest list", path: "/admin/registrations" }],
       },

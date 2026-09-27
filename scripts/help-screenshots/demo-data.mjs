@@ -115,7 +115,7 @@ events.forEach((ev, ei) => {
 });
 
 let sql = `-- Fake demo data for the Help screenshots. Every name and number is invented.\n`;
-sql += `DELETE FROM registrations; DELETE FROM people; DELETE FROM events; DELETE FROM admin_audit; DELETE FROM person_links; DELETE FROM gallery_images; DELETE FROM videos;\n`;
+sql += `DELETE FROM gallery_images; DELETE FROM registrations; DELETE FROM person_links; DELETE FROM people; DELETE FROM events; DELETE FROM admin_audit; DELETE FROM videos;\n`;
 for (const e of events) {
   sql += `INSERT INTO events (id, slug, title, held_at, status, address, announcement_title, announcement_body, attendance_tracked, created_at) VALUES (${q(e.id)}, ${q(e.held)}, ${q(e.title)}, ${q(`${e.held}T14:00:00+08:00`)}, ${q(e.status)}, ${q(VENUE)}, ${q(e.ann_t)}, ${q(e.ann_b || "")}, ${e.tracked}, ${q(shiftDay(e.held, -40) + " 02:00:00")});\n`;
 }

@@ -4590,6 +4590,22 @@ html[data-admin-theme="dark"] body.page-admin .site-footer a { color: inherit; }
   body.admin-menu-open .admin-scrim { animation: none; }
 }
 
+/* Events list: a quiet status filter, tappable rows, and pages of five. */
+.ev-filter { margin: 0 0 0.6rem; }
+.ev-filter[hidden] { display: none; }
+.ev-filter .segmented label { position: relative; display: block; margin: 0; cursor: pointer; }
+.ev-filter .segmented input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.admin-event-list li[hidden] { display: none; }
+.admin-event-list li[data-event] { cursor: pointer; }
+.admin-event-link { color: inherit; text-decoration: none; }
+.admin-event-link:hover strong,
+.admin-event-list li[data-event]:hover .admin-event-link strong { text-decoration: underline; text-decoration-color: rgba(39, 52, 107, 0.35); text-underline-offset: 3px; }
+.admin-event-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.admin-event-list li[data-event] .admin-row-actions { cursor: default; }
+#event-empty { margin: 0.4rem 0 0; color: var(--muted); }
+#event-pager { margin-top: 0.7rem; }
+#event-pager[hidden] { display: none; }
+
 /* Help page: questions that open, and screenshots framed as a phone or a computer window. */
 .hp { max-width: 62rem; }
 .hp-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem 1.1rem; margin: 0 0 0.9rem; }

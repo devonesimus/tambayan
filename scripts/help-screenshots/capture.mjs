@@ -97,6 +97,22 @@ const shots = {
     if (kind === "phone") await scrollTo(page, ".admin-event-list li:nth-child(2)");
     await save(page, "events-status", kind);
   },
+  async "events-filter"(page, kind) {
+    await open(page, "/admin/events");
+    await page.click('input[name="ev-status"][value="closed"]');
+    await sleep(300);
+    await mark(page, [".ev-filter .segmented", "#event-pager"]);
+    if (kind === "phone") { await scrollTo(page, "#events-heading"); await page.evaluate(() => window.scrollBy(0, -90)); }
+    await save(page, "events-filter", kind);
+  },
+  async "events-delete"(page, kind) {
+    await open(page, "/admin/events");
+    await page.click('input[name="ev-status"][value="draft"]');
+    await sleep(300);
+    await mark(page, [".admin-icon-btn.is-danger"]);
+    if (kind === "phone") { await scrollTo(page, "#events-heading"); await page.evaluate(() => window.scrollBy(0, -90)); }
+    await save(page, "events-delete", kind);
+  },
   async "event-form"(page, kind) {
     await open(page, `/admin/events?id=${meta.open.id}`);
     if (kind === "phone") await scrollTo(page, "#event-form-panel");

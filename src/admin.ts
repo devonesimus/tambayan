@@ -385,6 +385,9 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === "/api/admin/events" && request.method === "POST") {
     return apiUpsertEvent(request, env, auth.email);
   }
+  if (path === "/api/admin/events/delete" && request.method === "POST") {
+    return apiDeleteEvent(request, env, auth.email);
+  }
   if (path === "/api/admin/events/status" && request.method === "POST") {
     return apiSetEventStatus(request, env, auth.email);
   }
@@ -961,7 +964,7 @@ async function renderDashboard(request: Request, env: Env): Promise<Response> {
     <div class="admin-stats">
       ${
         open
-          ? `<a class="admin-stat admin-stat-lead" href="/admin/events?id=${escapeHtml(open.id)}">
+          ? `<a class="admin-stat admin-stat-lead" href="${escapeHtml(regHref)}">
         <span>Open for public ${statusBadge(open)}</span>
         <strong>${escapeHtml(open.title)}</strong>
         <em>${escapeHtml(formatEventWhen(open.held_at))}</em>
@@ -1001,7 +1004,12 @@ async function renderDashboard(request: Request, env: Env): Promise<Response> {
 async function handleAdminEvents(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const editId = url.searchParams.get("id") || "";
-  const events = await env.DB.prepare("SELECT * FROM events ORDER BY held_at DESC").all<EventRow>();
+  const events = await env.DB.prepare(
+    `SELECT e.*,
+            (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id) AS guests,
+            (SELECT COUNT(*) FROM gallery_images g WHERE g.event_id = e.id) AS photos
+     FROM events e ORDER BY e.held_at DESC`,
+  ).all<EventRow & { guests: number; photos: number }>();
   const editing = editId
     ? events.results.find((e) => e.id === editId) || null
     : null;
@@ -1009,19 +1017,21 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
   const list =
     events.results.length === 0
       ? `<p class="notice">No events yet. Create the next OFW Tambayan below.</p>`
-      : `<ul class="admin-event-list">
+      : `<ul class="admin-event-list" id="event-list">
         ${events.results
           .map((e) => {
-            return `<li${e.id === editing?.id ? ` class="is-editing" aria-current="true"` : ""}>
+            const guestsHref = `/admin/registrations?event_id=${encodeURIComponent(e.id)}`;
+            const canDelete = e.status === "draft" && e.guests === 0 && e.photos === 0;
+            return `<li data-event data-id="${escapeHtml(e.id)}" data-status="${escapeHtml(e.status)}"${e.id === editing?.id ? ` class="is-editing" aria-current="true"` : ""}>
             <div class="admin-event-main">
               <div class="admin-event-title">
-                <strong>${escapeHtml(e.title)}</strong>
+                <a class="admin-event-link" href="${guestsHref}" title="See the guest list"><strong>${escapeHtml(e.title)}</strong></a>
                 ${statusBadge(e)}
               </div>
-              <p class="admin-event-meta"><span>${escapeHtml(formatEventWhen(e.held_at))}</span><span>${escapeHtml(e.address)}</span></p>
+              <p class="admin-event-meta"><span>${escapeHtml(formatEventWhen(e.held_at))}</span><span>${escapeHtml(e.address)}</span><span>${e.guests} ${e.guests === 1 ? "guest" : "guests"}</span></p>
             </div>
             <div class="admin-row-actions">
-              <a class="btn btn-ghost btn-sm" href="/admin/events?id=${escapeHtml(e.id)}#event-form">${e.id === editing?.id ? "Editing" : "Edit"}</a>
+              <a class="btn btn-ghost btn-sm" data-edit="${escapeHtml(e.id)}" href="/admin/events?id=${escapeHtml(e.id)}#event-form">${e.id === editing?.id ? "Editing" : "Edit"}</a>
               ${
                 e.status === "open"
                   ? `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="closed">Force close</button>`
@@ -1029,6 +1039,11 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
                     ? `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="open">Reopen</button>`
                     : `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="open">Open</button>
                        <button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="closed">Close</button>`
+              }
+              ${
+                canDelete
+                  ? `<button type="button" class="admin-icon-btn is-danger" data-delete="${escapeHtml(e.id)}" data-title="${escapeHtml(e.title)}" aria-label="Delete the empty draft ${escapeHtml(e.title)}" title="Delete this empty draft">${menuIcon("trash")}</button>`
+                  : ""
               }
             </div>
           </li>`;
@@ -1053,10 +1068,26 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
     <div class="admin-split">
       <section class="admin-panel">
         <div class="admin-panel-head">
-          <h2>All events</h2>
+          <h2 id="events-heading">All events</h2>
           <a class="btn btn-primary btn-sm" href="/admin/events#event-form">${menuIcon("add")}New event</a>
         </div>
+        <div class="ev-filter" id="event-filter" hidden>
+          <div class="segmented segmented--sm" role="radiogroup" aria-label="Show events">
+            <label><input type="radio" name="ev-status" value="all" checked /><span>All</span></label>
+            <label><input type="radio" name="ev-status" value="open" /><span>Open</span></label>
+            <label><input type="radio" name="ev-status" value="closed" /><span>Closed</span></label>
+            <label><input type="radio" name="ev-status" value="draft" /><span>Draft</span></label>
+          </div>
+        </div>
         ${list}
+        <p class="notice" id="event-empty" hidden></p>
+        <div class="reg-pager" id="event-pager" hidden>
+          <p class="reg-pager-size" id="event-range" aria-live="polite"></p>
+          <div class="reg-pager-nav">
+            <button type="button" class="btn btn-ghost" id="event-prev">Previous</button>
+            <button type="button" class="btn btn-ghost" id="event-next">Next</button>
+          </div>
+        </div>
       </section>
       <section class="admin-panel${editing ? " is-editing" : ""}" id="event-form-panel">
         <h2>${formTitle}</h2>
@@ -1212,6 +1243,40 @@ async function apiUpsertEvent(request: Request, env: Env, actor: string): Promis
   });
 
   return json({ ok: true, id, slug, status });
+}
+
+/** Only an empty Draft can go: no guests and no photos, so nothing the public or the reports rely on is lost. */
+async function apiDeleteEvent(request: Request, env: Env, actor: string): Promise<Response> {
+  const body = (await request.json()) as { id?: string };
+  const id = String(body.id || "").trim();
+  if (!id) return json({ error: "id required" }, 400);
+  const event = await env.DB.prepare(`SELECT id, title, status FROM events WHERE id = ?`)
+    .bind(id)
+    .first<{ id: string; title: string; status: string }>();
+  if (!event) return json({ error: "That event no longer exists." }, 404);
+  if (event.status !== "draft") return json({ error: "Only a Draft event can be deleted." }, 409);
+  const guests =
+    (await env.DB.prepare(`SELECT COUNT(*) AS c FROM registrations WHERE event_id = ?`).bind(id).first<{ c: number }>())?.c || 0;
+  if (guests > 0) {
+    return json({ error: `This event has ${guests} ${guests === 1 ? "guest" : "guests"}, so it cannot be deleted. Remove them first.` }, 409);
+  }
+  const photos =
+    (await env.DB.prepare(`SELECT COUNT(*) AS c FROM gallery_images WHERE event_id = ?`).bind(id).first<{ c: number }>())?.c || 0;
+  if (photos > 0) {
+    return json({ error: `This event has ${photos} ${photos === 1 ? "photo" : "photos"}, so it cannot be deleted. Delete the photos first.` }, 409);
+  }
+  await env.DB.prepare(`UPDATE site_settings SET next_event_id = NULL WHERE next_event_id = ?`).bind(id).run();
+  const result = await env.DB.prepare(
+    `DELETE FROM events
+     WHERE id = ? AND status = 'draft'
+       AND NOT EXISTS (SELECT 1 FROM registrations WHERE event_id = ?)
+       AND NOT EXISTS (SELECT 1 FROM gallery_images WHERE event_id = ?)`,
+  )
+    .bind(id, id, id)
+    .run();
+  if (!result.meta.changes) return json({ error: "That event changed while you were deleting it. Reload and try again." }, 409);
+  await recordAudit(env, { actor, action: "event.delete", targetId: id, summary: `Deleted the empty draft ${event.title}` });
+  return json({ ok: true });
 }
 
 async function apiSetEventStatus(request: Request, env: Env, actor: string): Promise<Response> {

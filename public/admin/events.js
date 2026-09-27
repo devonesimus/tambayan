@@ -180,4 +180,120 @@
       }
     });
   });
+  // Delete an empty draft.
+  document.querySelectorAll("[data-delete]").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const id = btn.getAttribute("data-delete");
+      const title = btn.getAttribute("data-title") || "this event";
+      if (!id) return;
+      if (!confirm(`Delete the empty draft "${title}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch("/api/admin/events/delete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Could not delete the event");
+        const editing = new URLSearchParams(location.search).get("id") === id;
+        if (editing) location.href = "/admin/events";
+        else location.reload();
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Error");
+      }
+    });
+  });
+
+  // The events list: filter by status, a few per page, and tap an event to see its guests.
+  const list = document.getElementById("event-list");
+  const filterBox = document.getElementById("event-filter");
+  if (list && filterBox) {
+    const PAGE_SIZE = 5;
+    const rows = [...list.querySelectorAll("li[data-event]")];
+    const heading = document.getElementById("events-heading");
+    const empty = document.getElementById("event-empty");
+    const pager = document.getElementById("event-pager");
+    const range = document.getElementById("event-range");
+    const prev = document.getElementById("event-prev");
+    const next = document.getElementById("event-next");
+    const radios = [...filterBox.querySelectorAll('input[name="ev-status"]')];
+    const titles = { all: "All events", open: "Open events", closed: "Closed events", draft: "Draft events" };
+    const nothing = { open: "No open events.", closed: "No closed events.", draft: "No draft events." };
+    const valid = (value) => (value === "open" || value === "closed" || value === "draft" ? value : "all");
+
+    const params = new URLSearchParams(location.search);
+    let filter = valid(params.get("status"));
+    let page = Math.max(1, Number(params.get("page")) || 1);
+    const editingId = params.get("id");
+    const matching = () => rows.filter((row) => filter === "all" || row.dataset.status === filter);
+
+    // Land on the page that holds the event being edited.
+    const editingRow = editingId ? rows.find((row) => row.dataset.id === editingId) : null;
+    if (editingRow) {
+      if (filter !== "all" && editingRow.dataset.status !== filter) filter = "all";
+      if (!params.get("page")) page = Math.floor(matching().indexOf(editingRow) / PAGE_SIZE) + 1;
+    }
+
+    function paint() {
+      const shown = matching();
+      const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+      page = Math.min(Math.max(1, page), pages);
+      const from = (page - 1) * PAGE_SIZE;
+      const onPage = new Set(shown.slice(from, from + PAGE_SIZE));
+      rows.forEach((row) => { row.hidden = !onPage.has(row); });
+      if (heading) heading.textContent = titles[filter];
+      radios.forEach((radio) => { radio.checked = radio.value === filter; });
+      if (empty) {
+        empty.hidden = shown.length > 0;
+        empty.textContent = nothing[filter] || "";
+      }
+      const paged = shown.length > PAGE_SIZE;
+      if (pager) pager.hidden = !paged;
+      if (paged && range) range.textContent = `${from + 1}–${Math.min(shown.length, from + PAGE_SIZE)} of ${shown.length}`;
+      if (prev) prev.disabled = page <= 1;
+      if (next) next.disabled = page >= pages;
+
+      // Keep the place in the address, so Edit and back returns to the same list.
+      const query = new URLSearchParams(location.search);
+      filter === "all" ? query.delete("status") : query.set("status", filter);
+      page === 1 ? query.delete("page") : query.set("page", String(page));
+      const qs = query.toString();
+      history.replaceState(null, "", `${location.pathname}${qs ? `?${qs}` : ""}${location.hash}`);
+      const keep = new URLSearchParams();
+      if (filter !== "all") keep.set("status", filter);
+      if (page > 1) keep.set("page", String(page));
+      list.querySelectorAll("a[data-edit]").forEach((link) => {
+        const q = new URLSearchParams(keep);
+        q.set("id", link.getAttribute("data-edit"));
+        link.setAttribute("href", `/admin/events?${q.toString()}#event-form`);
+      });
+      document.querySelectorAll(".admin-form-actions a.btn-ghost[href='/admin/events']").forEach((link) => {
+        const qs2 = keep.toString();
+        link.setAttribute("href", `/admin/events${qs2 ? `?${qs2}` : ""}`);
+      });
+    }
+
+    filterBox.hidden = false;
+    radios.forEach((radio) =>
+      radio.addEventListener("change", () => {
+        if (!radio.checked) return;
+        filter = valid(radio.value);
+        page = 1;
+        paint();
+      }),
+    );
+    prev?.addEventListener("click", () => { page -= 1; paint(); });
+    next?.addEventListener("click", () => { page += 1; paint(); });
+
+    // Tapping anywhere on a row (except its buttons) opens that event's guest list.
+    list.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const row = target?.closest("li[data-event]");
+      if (!target || !row || target.closest("a, button")) return;
+      const link = row.querySelector(".admin-event-link");
+      if (link) location.href = link.getAttribute("href");
+    });
+    paint();
+  }
 })();
