@@ -3177,6 +3177,9 @@ a.pp-name:hover { text-decoration: underline; }
 .pp-back { justify-self: start; color: var(--muted); font-size: 0.88rem; font-weight: 600; text-decoration: none; }
 .pp-back:hover { color: var(--accent-deep); }
 .pp-profile-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.15rem; }
+/* Let the name block shrink and wrap on phones, so the Edit button stays on screen. */
+.pp-profile-head > div { min-width: 0; }
+.pp-profile-head .pp-sub { white-space: normal; }
 .pp-title { margin: 0 0 0.2rem; font-size: clamp(1.6rem, 3vw, 2.1rem); }
 .pp-facts {
   display: grid;
