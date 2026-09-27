@@ -395,13 +395,26 @@ const sections: Section[] = [
           <li>Open <strong>Reports</strong> and tap <strong>Trends</strong>.</li>
           <li>Pick a period such as <strong>Last 6 months</strong> or <strong>All time</strong>, or open <strong>Custom range</strong>.</li>
           <li>Choose <strong>Each gathering</strong>, <strong>By month</strong> or <strong>By year</strong>.</li>
-          <li>Tap <strong>Export CSV</strong> to open the numbers in a spreadsheet.</li>
+          <li>Tap <strong>Export PowerPoint</strong> to download the numbers as slides. See <a href="#q-report-deck">what is in the deck</a>. A small <strong>CSV</strong> link beside it gives a spreadsheet file instead.</li>
         </ol>
         <p>Lower down, <strong>Regulars</strong> are people who came to at least 3 of the last 6 gatherings. <strong>Worth a check-in</strong> are people who came at least twice but not in the last 3.</p>`,
         shots: [
           { name: "trends", alt: "The Trends tab", path: "/admin/reports?view=trends" },
+          { name: "trends-export", alt: "The Export PowerPoint button, the Include names tick and the CSV link", path: "/admin/reports?view=trends", caption: "Export options" },
           { name: "trends-people", alt: "Regulars and people worth a check-in", path: "/admin/reports?view=trends" },
         ],
+      },
+      {
+        id: "report-deck",
+        q: "How do I export a report as a PowerPoint?",
+        a: `<ol>
+          <li>Open <strong>Reports</strong> and tap <strong>Trends</strong>.</li>
+          <li>Pick the period and how to group it. The deck follows what you see on screen.</li>
+          <li>Tick <strong>Include names</strong> only if you want people listed by name. It is off by default, because decks get forwarded.</li>
+          <li>Tap <strong>Export PowerPoint</strong>. The file downloads in a few seconds, named after the period, for example <em>ofw-tambayan-gathering-report-2026-04-to-2026-09.pptx</em>.</li>
+        </ol>
+        <p>The deck has a cover, <strong>At a glance</strong>, <strong>Guests on the list</strong>, <strong>Who actually came</strong>, <strong>Regulars and people worth a check-in</strong>, and a table of the numbers. Each slide has short speaker notes. The charts are real PowerPoint charts, so you can click one to edit its colours or numbers. It also opens in Keynote and Google Slides.</p>
+        <p>You need an internet connection to build it. If the button says the tool did not load, check your connection and try again.</p>`,
       },
     ],
   },

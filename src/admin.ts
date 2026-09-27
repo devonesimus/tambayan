@@ -44,6 +44,7 @@ import { layout } from "./layout";
 import {
   analyze,
   bucketize,
+  deckData,
   followUp,
   inRange,
   renderTrends,
@@ -348,6 +349,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === "/admin/registrations") return renderRegistrations(request, env);
   if (path === "/admin/reports") return renderReports(request, env);
   if (path === "/admin/reports.csv") return reportsCsv(request, env);
+  if (path === "/admin/reports.json") return reportsDeckJson(request, env);
   if (path === "/admin/people") return renderPeople(request, env);
   if (path === "/admin/gallery") return handleAdminGallery(request, env);
   if (path === "/admin/videos") return handleAdminVideos(request, env);
@@ -706,7 +708,8 @@ async function reportsCsv(request: Request, env: Env): Promise<Response> {
   });
 }
 
-async function renderTrendsPage(request: Request, env: Env): Promise<Response> {
+/** The Trends numbers for the period and grouping in the address, shared by the page and the deck export. */
+async function loadTrendsView(request: Request, env: Env) {
   const url = new URL(request.url);
   const today = singaporeDay(new Date().toISOString());
   const { all, appearances } = await loadReportData(env);
@@ -715,7 +718,7 @@ async function renderTrendsPage(request: Request, env: Env): Promise<Response> {
   const grain: Grain = by === "month" || by === "year" ? by : "gathering";
   const list = inRange(all, range, today);
   const people = await env.DB.prepare(`SELECT id, name FROM people`).all<{ id: string; name: string }>();
-  const body = renderTrends({
+  return {
     range,
     grain,
     today,
@@ -725,9 +728,23 @@ async function renderTrendsPage(request: Request, env: Env): Promise<Response> {
     summary: summarize(list, appearances),
     followUp: followUp(all, appearances, today),
     names: new Map(people.results.map((person) => [person.id, person.name])),
-    duplicatesPending: (await suspectMap(env)).size,
-  });
+  };
+}
+
+async function renderTrendsPage(request: Request, env: Env): Promise<Response> {
+  const view = await loadTrendsView(request, env);
+  const body = renderTrends({ ...view, duplicatesPending: (await suspectMap(env)).size });
   return html(adminShell(env, request, "Reports", body, "reports"));
+}
+
+/** Data for the PowerPoint export. Guest names are only included when the organizer ticks "Include names". */
+async function reportsDeckJson(request: Request, env: Env): Promise<Response> {
+  const includeNames = new URL(request.url).searchParams.get("names") === "1";
+  const view = await loadTrendsView(request, env);
+  const generated = new Intl.DateTimeFormat("en-SG", { timeZone: "Asia/Singapore", day: "numeric", month: "short", year: "numeric" })
+    .format(new Date())
+    .replace("Sept", "Sep");
+  return json(deckData(view, includeNames, generated), 200, { "cache-control": "no-store" });
 }
 
 async function renderReports(request: Request, env: Env): Promise<Response> {

@@ -230,7 +230,7 @@ export function summarize(list: Gathering[], appearances: AppearanceRow[]): Summ
   };
 }
 
-function shortTitle(g: Gathering): string {
+export function shortTitle(g: Gathering): string {
   const day = Number(g.day.slice(8, 10));
   return `${day} ${monthLabel(g.day.slice(0, 7))}`;
 }
@@ -270,6 +270,54 @@ export function followUp(all: Gathering[], appearances: AppearanceRow[], today: 
     .sort((a, b) => b.lastHeld.localeCompare(a.lastHeld) || b.seen - a.seen)
     .map(({ id, seen: count, lastSeen }) => ({ id, seen: count, lastSeen }));
   return { windowSize: Math.min(6, settled.length), regulars, drifting };
+}
+
+// ---------- deck (PowerPoint) ----------
+
+/** Everything the exported deck needs, as plain data. Names are left out unless asked for. */
+export function deckData(view: Omit<TrendsView, "duplicatesPending">, includeNames: boolean, generated: string) {
+  const { range, grain, list, buckets, summary, followUp: f, names } = view;
+  const perGathering = new Map(list.map((g) => [g.id, g]));
+  const anyUntracked = list.some((g) => !g.tracked);
+  const firstMarked = view.all.find((g) => g.tracked);
+  const marked = list.filter((g) => g.marked);
+  const label = (g: Gathering) => (grain === "gathering" ? buckets.find((b) => b.key === g.id)?.label : undefined) ?? shortTitle(g);
+  const nameOf = (id: string) => names.get(id) || "Guest";
+  return {
+    generated,
+    period: range.label,
+    from: range.from,
+    to: range.to,
+    grain,
+    summary,
+    anyUntracked,
+    attendanceFrom: firstMarked ? monthLabel(firstMarked.day.slice(0, 7)) : null,
+    hasBaseline: list.some((g) => g.baseline),
+    buckets: buckets.map((b) => {
+      const g = grain === "gathering" ? perGathering.get(b.key) : undefined;
+      return {
+        label: b.label,
+        title: b.title,
+        gatherings: b.gatherings,
+        guests: b.guests,
+        returning: b.returning,
+        firstTime: b.firstTime,
+        baselineGuests: b.baselineGuests,
+        average: b.average,
+        came: g?.marked ? g.attended : null,
+        showUp: g?.marked && g.registered ? Math.round((100 * g.attended) / g.registered) : null,
+      };
+    }),
+    pairs: marked.map((g) => ({ label: label(g), title: shortTitle(g), listed: g.registered, attended: g.attended })),
+    waiting: list.filter((g) => g.tracked && !g.marked).map((g) => shortTitle(g)),
+    followUp: {
+      windowSize: f.windowSize,
+      regularsCount: f.regulars.length,
+      driftingCount: f.drifting.length,
+      regulars: includeNames ? f.regulars.map((r) => ({ name: nameOf(r.id), note: `${r.count} of the last ${f.windowSize}` })) : null,
+      drifting: includeNames ? f.drifting.map((d) => ({ name: nameOf(d.id), note: `last came ${d.lastSeen}` })) : null,
+    },
+  };
 }
 
 // ---------- charts ----------
@@ -443,6 +491,7 @@ export function renderTrends(view: TrendsView): string {
       `<a class="report-seg-item${grain === key ? " is-active" : ""}" href="${trendsHref(view, { by: key })}"${grain === key ? ' aria-current="true"' : ""}>${label}</a>`,
   ).join("");
   const csvParams = new URLSearchParams({ from: range.from, to: range.to });
+  const deckParams = new URLSearchParams({ from: range.from, to: range.to, by: grain });
 
   const controls = `
     <div class="report-controls">
@@ -461,7 +510,12 @@ export function renderTrends(view: TrendsView): string {
     <div class="report-toolbar">
       <p class="report-range-label"><strong>${escapeHtml(range.label)}</strong> · ${summary.gatherings} ${summary.gatherings === 1 ? "gathering" : "gatherings"}</p>
       <div class="report-seg" role="group" aria-label="Group by">${grains}</div>
-      <a class="btn btn-ghost btn-sm" href="/admin/reports.csv?${csvParams.toString()}">Export CSV</a>
+      <div class="report-export">
+        <button type="button" class="btn btn-ghost btn-sm" id="deck-export" data-query="${escapeHtml(deckParams.toString())}">Export PowerPoint</button>
+        <label class="report-names"><input type="checkbox" id="deck-names" /><span>Include names</span></label>
+        <a class="report-csv" href="/admin/reports.csv?${csvParams.toString()}">CSV</a>
+        <span id="deck-status" class="report-export-status" role="status" aria-live="polite"></span>
+      </div>
     </div>`;
 
   if (list.length === 0) {
@@ -559,7 +613,9 @@ export function renderTrends(view: TrendsView): string {
     </section>`;
 
   return `${header()}${tabs}${controls}${kpis}
-    <div class="report-grid">${chart1}${chart2}${people}</div>${dupNote}`;
+    <div class="report-grid">${chart1}${chart2}${people}</div>${dupNote}
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js" defer></script>
+    <script src="/admin/report-deck.js" defer></script>`;
 }
 
 function firstTracked(all: Gathering[]): string {

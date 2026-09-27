@@ -216,6 +216,13 @@ const shots = {
   },
   async "report-older"(page, kind) { await open(page, `/admin/reports?event_id=${older.id}`); await save(page, "report-older", kind); },
   async trends(page, kind) { await open(page, "/admin/reports?view=trends&range=all"); await save(page, "trends", kind); },
+  async "trends-export"(page, kind) {
+    await open(page, "/admin/reports?view=trends&range=all");
+    await scrollTo(page, ".report-toolbar");
+    await page.evaluate(() => window.scrollBy(0, -90));
+    await mark(page, ["#deck-export"]);
+    await save(page, "trends-export", kind);
+  },
   async "trends-people"(page, kind) {
     await open(page, "/admin/reports?view=trends&range=all");
     await scrollTo(page, ".report-grid .admin-panel:nth-child(3)");

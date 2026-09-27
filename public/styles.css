@@ -2882,6 +2882,12 @@ select:focus {
   gap: 0.6rem 1rem;
   margin: 0 0 0.9rem;
 }
+.report-export { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+.report-names { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--muted); font-size: 0.82rem; cursor: pointer; }
+.report-names input { width: 1rem; height: 1rem; margin: 0; padding: 0; accent-color: var(--ofw-navy); cursor: pointer; }
+.report-csv { color: var(--muted); font-size: 0.82rem; text-underline-offset: 3px; }
+.report-export-status { min-height: 1.1em; color: var(--muted); font-size: 0.82rem; }
+.report-export-status.is-error { color: var(--danger); }
 .report-range-label { margin: 0; color: var(--muted); font-size: 0.9rem; }
 .report-range-label strong { color: var(--ink); }
 .report-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.6rem; margin: 0 0 0.85rem; }
