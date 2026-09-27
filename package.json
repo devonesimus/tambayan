@@ -11,10 +11,14 @@
     "db:migrate:local": "wrangler d1 migrations apply tambayan-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply tambayan-db --remote",
     "db:seed:local": "wrangler d1 execute tambayan-db --local --file=./seeds/seed.local.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "help:demo:setup": "node scripts/help-screenshots/setup.mjs",
+    "help:demo": "wrangler dev --port 43124 --ip 127.0.0.1 --persist-to .wrangler/help-demo/state",
+    "help:shots": "node scripts/help-screenshots/capture.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260921.1",
+    "puppeteer-core": "^25.12.0",
     "typescript": "^5.9.2",
     "wrangler": "^4.37.0"
   }

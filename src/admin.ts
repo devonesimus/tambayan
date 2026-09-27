@@ -39,6 +39,7 @@ import {
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
+import { helpBody } from "./help";
 import { layout } from "./layout";
 import {
   analyze,
@@ -96,6 +97,7 @@ const menuIconPaths: Record<string, string> = {
   videos: `<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m10 9 5 3-5 3z"/>`,
   reports: `<path d="M4 19.5V11M10 19.5V4.5M16 19.5V8.5M21 19.5H3"/>`,
   activity: `<path d="M3 12h4l2.5-6.5 5 13L17 12h4"/>`,
+  help: `<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.8M12 16.6v.1"/>`,
   password: `<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>`,
   site: `<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>`,
   theme: `<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>`,
@@ -154,11 +156,12 @@ function adminShell(
           <div class="admin-bar-actions">
             <button type="button" class="theme-toggle" id="admin-theme" aria-pressed="false" title="Dark mode">${menuIcon("theme")}<span class="theme-toggle-label">Dark mode</span><span class="theme-switch" aria-hidden="true"></span></button>
             <div class="admin-account">
-              <button type="button" class="admin-account-btn${active === "activity" || active === "password" ? " is-active" : ""}" id="admin-account" aria-expanded="false" aria-controls="admin-account-menu">${menuIcon("account")}<span>Account</span></button>
+              <button type="button" class="admin-account-btn${active === "activity" || active === "password" || active === "help" ? " is-active" : ""}" id="admin-account" aria-expanded="false" aria-controls="admin-account-menu">${menuIcon("account")}<span>Account</span></button>
               <div class="admin-account-menu" id="admin-account-menu">
                 <p class="admin-menu-heading">Account</p>
                 <a class="admin-site-link${active === "activity" ? " is-active" : ""}" href="/admin/activity">${menuIcon("activity")}Activity</a>
                 <a class="admin-site-link${active === "password" ? " is-active" : ""}" href="/admin/password">${menuIcon("password")}Password</a>
+                <a class="admin-site-link${active === "help" ? " is-active" : ""}" href="/admin/help">${menuIcon("help")}Help</a>
                 <a class="admin-site-link" href="/">${menuIcon("site")}View site</a>
                 <form method="post" action="/admin/logout"><button class="btn btn-ghost admin-logout" type="submit">${menuIcon("logout")}Log out</button></form>
               </div>
@@ -350,6 +353,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
   if (path === "/admin/videos") return handleAdminVideos(request, env);
   if (path === "/admin/activity") return renderActivity(request, env);
   if (path === "/admin/password") return handlePassword(request, env, auth.email);
+  if (path === "/admin/help") return html(adminShell(env, request, "Help", helpBody(), "help"));
 
   if (path === "/api/admin/registrations" && request.method === "GET") {
     return apiRegistrations(request, env);

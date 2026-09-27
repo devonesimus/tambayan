@@ -171,3 +171,6 @@ seeds/seed.local.sql
 seeds/seed.sql
 seeds/seed.prod.local.sql
 seeds/prod-admin-passwords.txt
+
+# Demo admin logins for help screenshots
+seeds/*.local.sql
