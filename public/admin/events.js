@@ -146,6 +146,7 @@
           announcement_title: fd.get("announcement_title"),
           announcement_body: fd.get("announcement_body"),
           status: fd.get("status"),
+          gospel_weekend_date: fd.get("gospel_weekend_date"),
         }),
       });
       const json = await res.json();
