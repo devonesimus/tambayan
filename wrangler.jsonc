@@ -32,6 +32,14 @@
       "preview_bucket_name": "tambayan-gallery"
     }
   ],
+  // Private Worker-to-Worker call to the Gospel Weekend site (same Cloudflare account), used only
+  // when an event's gospel_weekend_date is set. See src/gospel-weekend-sync.ts.
+  "services": [
+    {
+      "binding": "GOSPEL_WEEKEND",
+      "service": "pinoy-rag-agent"
+    }
+  ],
   "routes": [
     {
       "pattern": "tambayan.fsdac.app",

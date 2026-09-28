@@ -22,6 +22,8 @@ export type EventRow = {
   address: string;
   announcement_title: string | null;
   announcement_body: string;
+  /** One of GOSPEL_WEEKEND_DATES (gospel-weekend-sync.ts), or null for an ordinary gathering. */
+  gospel_weekend_date: string | null;
 };
 
 export type RegistrationRow = {
@@ -110,6 +112,26 @@ export function siteBase(env: Env, request: Request): string {
   const configured = (env.SITE_URL || "").replace(/\/$/, "");
   if (configured) return configured;
   return new URL(request.url).origin;
+}
+
+/** Shared by admin actions and the public registration flow (e.g. a failed Gospel Weekend sync). */
+export async function recordAudit(
+  env: Env,
+  entry: { actor: string; action: string; targetId?: string | null; summary: string },
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO admin_audit (id, created_at, actor, action, target_id, summary)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      new Date().toISOString(),
+      entry.actor,
+      entry.action,
+      entry.targetId || null,
+      entry.summary.slice(0, 300),
+    )
+    .run();
 }
 
 export async function getSettings(db: D1Database): Promise<SiteSettings> {

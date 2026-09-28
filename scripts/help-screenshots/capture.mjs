@@ -118,6 +118,19 @@ const shots = {
     if (kind === "phone") await scrollTo(page, "#event-form-panel");
     await save(page, "event-form", kind);
   },
+  async "event-gospel-weekend"(page, kind) {
+    await open(page, `/admin/events?id=${meta.open.id}`);
+    await page.evaluate(() => {
+      const details = [...document.querySelectorAll("#event-form-panel details")].find((d) =>
+        d.textContent.includes("Gospel Weekend"),
+      );
+      if (details) details.open = true;
+    });
+    await page.select('#event-form select[name="gospel_weekend_date"]', "Oct 11");
+    await scrollTo(page, '#event-form select[name="gospel_weekend_date"]', "center");
+    await mark(page, ['#event-form select[name="gospel_weekend_date"]']);
+    await save(page, "event-gospel-weekend", kind);
+  },
   async "event-date"(page, kind) {
     await open(page, "/admin/events");
     if (kind === "phone") await scrollTo(page, "#event-form-panel");

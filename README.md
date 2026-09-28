@@ -72,9 +72,10 @@ Cloudflare resources are provisioned for this account:
 Then:
 
 1. `wrangler secret put SESSION_SECRET` (from `.dev.vars` locally)
-2. `npm run db:migrate:remote`
-3. Seed admins: `wrangler d1 execute tambayan-db --remote --file=./seeds/seed.local.sql`
-4. `npm run deploy`  
+2. `wrangler secret put TAMBAYAN_SYNC_TOKEN` (same value as `TAMBAYAN_SYNC_TOKEN` on the pinoy-rag-agent Worker — needed only when an event's Gospel Weekend sync is in use; see below)
+3. `npm run db:migrate:remote`
+4. Seed admins: `wrangler d1 execute tambayan-db --remote --file=./seeds/seed.local.sql`
+5. `npm run deploy`  
    Or push to `main` — GitHub Action `.github/workflows/deploy.yml` uses:
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
@@ -82,6 +83,12 @@ Then:
 ## Admin model
 
 A few seeded email/password admins (PBKDF2 hashes in D1). Cookie session is HMAC-signed with `SESSION_SECRET`, **8 hour** TTL. No invites, roles, or SSO in v1. Gallery uploads work as soon as an event exists (any status).
+
+## Gospel Weekend sync (occasional)
+
+An event's **Gospel Weekend sync** field (Edit Event form, `events.gospel_weekend_date`) mirrors a public sign-up into the sibling `pinoy-rag-agent` Worker (`gospelweekend.fsdac.app`) as that day's attendance — for a Tambayan gathering that doubles as one day of that church-wide event. It's `NULL`/unset for every ordinary event and does nothing until an admin sets it.
+
+Reaches the other Worker over a Cloudflare Service Binding (`wrangler.jsonc`: `services` → `GOSPEL_WEEKEND`, same Cloudflare account, both Workers must be deployed) rather than the public internet, authenticated with the shared `TAMBAYAN_SYNC_TOKEN` secret (must be set to the same value on both Workers). The sync runs in the background (`ctx.waitUntil`) after the guest's own registration is saved — a Tambayan sign-up always succeeds even if the other Worker is unreachable, and a failure there is recorded in Activity (`gospel_weekend.sync_failed`) rather than shown to the guest. See `src/gospel-weekend-sync.ts`.
 
 ## Design
 

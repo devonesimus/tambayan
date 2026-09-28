@@ -26,6 +26,7 @@ import {
   namesSuspect,
   normalizeMobile,
   personCompleteness,
+  recordAudit,
   slugify,
   youtubeId,
   youtubeThumb,
@@ -39,6 +40,7 @@ import {
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
+import { GOSPEL_WEEKEND_DATES, isGospelWeekendDate } from "./gospel-weekend-sync";
 import { helpBody } from "./help";
 import { layout } from "./layout";
 import {
@@ -56,25 +58,6 @@ import {
   type Gathering,
   type Grain,
 } from "./reports";
-
-async function recordAudit(
-  env: Env,
-  entry: { actor: string; action: string; targetId?: string | null; summary: string },
-): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO admin_audit (id, created_at, actor, action, target_id, summary)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      crypto.randomUUID(),
-      new Date().toISOString(),
-      entry.actor,
-      entry.action,
-      entry.targetId || null,
-      entry.summary.slice(0, 300),
-    )
-    .run();
-}
 
 function auditWhen(iso: string): string {
   const d = new Date(iso);
@@ -1183,6 +1166,24 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
               </label>
             </div>
           </details>
+          <details class="ef-group ef-more"${editing?.gospel_weekend_date ? " open" : ""}>
+            <summary>
+              <span>${editing?.gospel_weekend_date ? "Gospel Weekend sync" : "Also register as Gospel Weekend attendance"}</span>
+              <em>optional</em>
+            </summary>
+            <div class="ef-more-body">
+              <label class="ef-field"><span class="ef-label">Day</span>
+                <select name="gospel_weekend_date">
+                  <option value="">Not part of Gospel Weekend</option>
+                  ${GOSPEL_WEEKEND_DATES.map(
+                    (date) =>
+                      `<option value="${date}" ${editing?.gospel_weekend_date === date ? "selected" : ""}>${date}</option>`,
+                  ).join("")}
+                </select>
+              </label>
+              <p class="ef-hint">When set, a guest who signs up here is also registered for that day on the Gospel Weekend site.</p>
+            </div>
+          </details>
           <div class="admin-form-actions ef-actions">
             <button class="btn btn-primary" type="submit">${editing ? "Save changes" : "Create event"}</button>
             ${editing ? `<a class="btn btn-ghost" href="/admin/events">Cancel</a>` : ""}
@@ -1206,6 +1207,7 @@ async function apiUpsertEvent(request: Request, env: Env, actor: string): Promis
     announcement_title?: string;
     announcement_body?: string;
     status?: string;
+    gospel_weekend_date?: string;
   };
   const title = String(body.title || "").trim();
   const slug = slugify(String(body.slug || title));
@@ -1216,6 +1218,11 @@ async function apiUpsertEvent(request: Request, env: Env, actor: string): Promis
   const statusRaw = String(body.status || "draft").toLowerCase();
   const status: EventStatus =
     statusRaw === "open" || statusRaw === "closed" || statusRaw === "draft" ? statusRaw : "draft";
+  const gospelWeekendRaw = String(body.gospel_weekend_date || "").trim();
+  if (gospelWeekendRaw && !isGospelWeekendDate(gospelWeekendRaw)) {
+    return json({ error: "gospel_weekend_date must be one of " + GOSPEL_WEEKEND_DATES.join(", ") }, 400);
+  }
+  const gospel_weekend_date = gospelWeekendRaw || null;
 
   if (!title || !slug || !held_at) return json({ error: "title, slug, held_at required" }, 400);
   if (Number.isNaN(new Date(held_at).getTime())) {
@@ -1231,17 +1238,17 @@ async function apiUpsertEvent(request: Request, env: Env, actor: string): Promis
     if (existing) {
       await env.DB.prepare(
         `UPDATE events
-         SET slug = ?, title = ?, held_at = ?, address = ?, announcement_title = ?, announcement_body = ?, status = ?
+         SET slug = ?, title = ?, held_at = ?, address = ?, announcement_title = ?, announcement_body = ?, status = ?, gospel_weekend_date = ?
          WHERE id = ?`,
       )
-        .bind(slug, title, held_at, address, announcement_title, announcement_body, status, id)
+        .bind(slug, title, held_at, address, announcement_title, announcement_body, status, gospel_weekend_date, id)
         .run();
     } else {
       await env.DB.prepare(
-        `INSERT INTO events (id, slug, title, held_at, address, announcement_title, announcement_body, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO events (id, slug, title, held_at, address, announcement_title, announcement_body, status, gospel_weekend_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-        .bind(id, slug, title, held_at, address, announcement_title, announcement_body, status)
+        .bind(id, slug, title, held_at, address, announcement_title, announcement_body, status, gospel_weekend_date)
         .run();
     }
   } catch {

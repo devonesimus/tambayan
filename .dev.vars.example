@@ -1,2 +1,4 @@
 # Local secrets for `wrangler dev` (copy to .dev.vars — gitignored)
 SESSION_SECRET=dev-only-change-me-to-a-long-random-string
+# Must match TAMBAYAN_SYNC_TOKEN in pinoy-rag-agent's own .dev.vars for local testing to work.
+TAMBAYAN_SYNC_TOKEN=dev-only-shared-secret

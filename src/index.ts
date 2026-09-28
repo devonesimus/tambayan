@@ -12,7 +12,7 @@ import {
 } from "./public";
 
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
@@ -23,7 +23,7 @@ export default {
         return serveMedia(env, key);
       }
 
-      if (path === "/api/register") return handleRegisterApi(request, env);
+      if (path === "/api/register") return handleRegisterApi(request, env, ctx);
 
       if (
         (path.startsWith("/api/admin") || path.startsWith("/admin")) &&

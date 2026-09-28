@@ -177,6 +177,19 @@ const sections: Section[] = [
         <p>Guests see it at the top of the home page until the gathering starts.</p>`,
       },
       {
+        id: "gospel-weekend-sync",
+        q: "What is the “Gospel Weekend sync” field on the event form?",
+        a: `<p>It only matters for a gathering whose date is also one day of the FSDAC Gospel Weekend. Leave it as <strong>Not part of Gospel Weekend</strong> for every ordinary month — it does nothing unless set.</p>
+        <ol>
+          <li>Open the event with <strong>Edit</strong>.</li>
+          <li>Open <strong>Gospel Weekend sync</strong> and pick the matching day.</li>
+          <li>Tap <strong>Save changes</strong>.</li>
+        </ol>
+        <p>From then on, a guest who signs up for this event is also registered for that same day on the Gospel Weekend site, without doing anything extra. Their address is not asked for or sent, and only that one day is marked there. If that site cannot be reached, the guest's Tambayan sign-up still goes through, and an organizer can see it in <a href="#q-activity">Activity</a> as something to check.</p>
+        <p>Turn it back to <strong>Not part of Gospel Weekend</strong> for the next event, or simply leave it unset — a new event always starts with it off.</p>`,
+        shots: [{ name: "event-gospel-weekend", alt: "The Gospel Weekend sync field on the event form", path: "/admin/events" }],
+      },
+      {
         id: "event-delete",
         q: "Can I delete an event?",
         a: `<p>Only an <strong>empty Draft</strong>: one that has no guests and no photos. That keeps guest lists and reports complete.</p>

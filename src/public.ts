@@ -28,6 +28,7 @@ import {
 } from "./helpers";
 import { layout, shareButtons } from "./layout";
 import { dayLabel, directionsUrl, gatheringPhase, timeWindow } from "./gatherings";
+import { syncGospelWeekendAttendanceAndLog } from "./gospel-weekend-sync";
 
 type PhotoPreview = { key: string; caption: string | null };
 
@@ -502,7 +503,7 @@ async function findOrCreatePerson(
   return id;
 }
 
-export async function handleRegisterApi(request: Request, env: Env): Promise<Response> {
+export async function handleRegisterApi(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const event = await getOpenEvent(env.DB);
@@ -567,6 +568,13 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
           .run();
       }
     }
+    ctx.waitUntil(
+      syncGospelWeekendAttendanceAndLog(env, event, {
+        name: merged.name,
+        email: merged.email || null,
+        mobile: merged.mobile,
+      }),
+    );
     return json({
       ok: true,
       already: true,
@@ -585,6 +593,7 @@ export async function handleRegisterApi(request: Request, env: Env): Promise<Res
     .bind(id, event.id, name, email || null, mobileNorm, now, personId, now)
     .run();
 
+  ctx.waitUntil(syncGospelWeekendAttendanceAndLog(env, event, { name, email: email || null, mobile: mobileNorm }));
   return json({ ok: true, already: false, id, event: { id: event.id, title: event.title } });
 }
 
