@@ -29,10 +29,10 @@ export default {
         (path.startsWith("/api/admin") || path.startsWith("/admin")) &&
         !path.startsWith("/admin/") 
       ) {
-        return handleAdmin(request, env, path);
+        return handleAdmin(request, env, path, ctx);
       }
       if (path.startsWith("/admin/") && !/\.(?:js|css|map)$/.test(path)) {
-        return handleAdmin(request, env, path);
+        return handleAdmin(request, env, path, ctx);
       }
 
       if (path === "/") return renderHome(request, env);

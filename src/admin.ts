@@ -40,7 +40,7 @@ import {
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
-import { GOSPEL_WEEKEND_DATES, isGospelWeekendDate } from "./gospel-weekend-sync";
+import { GOSPEL_WEEKEND_DATES, isGospelWeekendDate, syncGospelWeekendAttendanceAndLog } from "./gospel-weekend-sync";
 import { helpBody } from "./help";
 import { registerFormCard } from "./public";
 import { layout } from "./layout";
@@ -279,7 +279,7 @@ function statusBadge(event: EventRow): string {
   return `<span class="status-pill status-${escapeHtml(event.status)}${softClosed ? " is-soft-closed" : ""}">${escapeHtml(statusLabel(event.status, softClosed))}</span>`;
 }
 
-export async function handleAdmin(request: Request, env: Env, path: string): Promise<Response> {
+export async function handleAdmin(request: Request, env: Env, path: string, ctx: ExecutionContext): Promise<Response> {
   if (path === "/admin/login") return handleLogin(request, env);
   const secureCookie = new URL(request.url).protocol === "https:";
 
@@ -346,7 +346,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
     return apiRegistrations(request, env);
   }
   if (path === "/api/admin/registrations" && request.method === "POST") {
-    return apiAdminCreateRegistration(request, env, auth.email);
+    return apiAdminCreateRegistration(request, env, auth.email, ctx);
   }
   if (path === "/api/admin/registrations/update" && request.method === "POST") {
     return apiAdminUpdateRegistration(request, env, auth.email);
@@ -1648,7 +1648,7 @@ async function apiRegistrations(request: Request, env: Env): Promise<Response> {
   });
 }
 
-async function apiAdminCreateRegistration(request: Request, env: Env, actor: string): Promise<Response> {
+async function apiAdminCreateRegistration(request: Request, env: Env, actor: string, ctx: ExecutionContext): Promise<Response> {
   const body = (await request.json()) as {
     event_id?: string;
     person_id?: string;
@@ -1670,9 +1670,9 @@ async function apiAdminCreateRegistration(request: Request, env: Env, actor: str
   const mobileNorm = mobile ? normalizeMobile(mobile) : "";
   if (mobile && !mobileNorm) return json({ error: "Enter a valid mobile number." }, 400);
 
-  const event = await env.DB.prepare(`SELECT id, title FROM events WHERE id = ?`)
+  const event = await env.DB.prepare(`SELECT id, title, gospel_weekend_date FROM events WHERE id = ?`)
     .bind(eventId)
-    .first<{ id: string; title: string }>();
+    .first<{ id: string; title: string; gospel_weekend_date: string | null }>();
   if (!event) return json({ error: "event not found" }, 404);
 
   // A picked person wins. Otherwise an exact name match reuses that person instead of making a twin.
@@ -1738,6 +1738,14 @@ async function apiAdminCreateRegistration(request: Request, env: Env, actor: str
     targetId: id,
     summary: `Added guest ${savedName} to ${shortEventTitle(event.title)}${attended ? " as attended" : ""}`,
   });
+
+  ctx.waitUntil(
+    syncGospelWeekendAttendanceAndLog(env, event, {
+      name: savedName,
+      email: email || person?.email || null,
+      mobile: mobileNorm || person?.mobile || "",
+    }),
+  );
 
   return json({ ok: true, id, name: savedName, attended, person_id: personId, event: { id: event.id, title: event.title } });
 }
