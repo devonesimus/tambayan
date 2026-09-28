@@ -131,6 +131,13 @@ const shots = {
     await mark(page, ['#event-form select[name="gospel_weekend_date"]']);
     await save(page, "event-gospel-weekend", kind);
   },
+  async "event-preview"(page, kind) {
+    await open(page, "/admin/events");
+    await page.click(`[data-preview="${meta.draft.id}"]`);
+    await page.waitForSelector("#event-preview-body .register-card", { timeout: 8000 });
+    await sleep(300);
+    await save(page, "event-preview", kind);
+  },
   async "event-date"(page, kind) {
     await open(page, "/admin/events");
     if (kind === "phone") await scrollTo(page, "#event-form-panel");

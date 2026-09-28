@@ -302,6 +302,73 @@ function confettiPieces(): string {
   }).join("");
 }
 
+/**
+ * The registration form itself: event info plus the name/email/mobile/privacy fields. Used by the
+ * real /register page for whichever event is open, and reused as-is (not a second copy) by the
+ * admin-only Draft preview (opts.preview) — so a preview can never drift from what a guest actually
+ * sees. Preview mode disables submission outright (no submit button, no action/method on the form)
+ * rather than just hiding it, and skips the confirmation markup and register.js, neither of which
+ * apply when nothing can be submitted.
+ */
+export function registerFormCard(env: Env, event: EventRow, opts: { preview?: boolean } = {}): string {
+  const preview = opts.preview ?? false;
+  const when = formatEventWhen(event.held_at);
+  const where = eventVenue(event, env);
+  const eventLines = `<p class="register-event-title">${escapeHtml(event.title)}</p>
+        <p class="register-event-line">${regIcon("calendar")}<span>${escapeHtml(when)}</span></p>
+        <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>`;
+
+  return `<div class="register-card">
+      ${preview ? `<p class="register-preview-banner">Preview only — this can’t be submitted here.</p>` : ""}
+      <div class="register-event">
+        ${eventLines}
+      </div>
+      <div id="register-panel">
+      ${
+        preview
+          ? ""
+          : `<div id="register-confirm" class="register-confirm" role="status" aria-live="polite" hidden>
+        <div class="reg-stage" aria-hidden="true">
+          <span class="reg-trail"></span>
+          <img class="reg-plane" src="/brand/airplane-red-flipped.svg" alt="" width="54" height="36" />
+          <div class="reg-burst">${confettiPieces()}</div>
+          <svg class="reg-check" viewBox="0 0 52 52">
+            <circle class="reg-check-ring" cx="26" cy="26" r="23" />
+            <path class="reg-check-tick" d="M15 27.5l7.2 7L37.5 19" />
+          </svg>
+        </div>
+        <p class="register-confirm-kicker" id="register-confirm-kicker"></p>
+        <p class="register-confirm-body" id="register-status"></p>
+        <div class="reg-done-event" id="reg-done-event">
+          ${eventLines}
+        </div>
+        <a class="btn btn-ghost reg-done-cal" id="register-confirm-cal" href="#" download="ofw-tambayan.ics">${regIcon("calendar")}Add to calendar</a>
+      </div>`
+      }
+      <form id="register-form" class="form form-register"${preview ? "" : ` method="post" action="/api/register"`} novalidate>
+        <label>
+          <span class="field-label">Name <em>required</em> <span class="field-hint" data-for="name"></span></span>
+          <input name="name" type="text" autocomplete="name" required maxlength="120" />
+        </label>
+        <label>
+          <span class="field-label">Email <em>optional</em> <span class="field-hint" data-for="email"></span></span>
+          <input name="email" type="email" autocomplete="email" maxlength="200" />
+        </label>
+        <label>
+          <span class="field-label">Mobile <em>required</em> <span class="field-hint" data-for="mobile"></span></span>
+          <input name="mobile" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+65…" maxlength="20" />
+        </label>
+        <label class="check">
+          <input name="privacy" type="checkbox" value="1" required />
+          <span class="field-label">I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> <span class="field-hint" data-for="privacy"></span></span>
+        </label>
+        <button class="btn btn-cta" type="${preview ? "button" : "submit"}"${preview ? " disabled title=\"This is a preview — sign-up isn’t open yet\"" : ""}>Register</button>
+      </form>
+      </div>
+      </div>
+      ${preview ? "" : `<script src="/register.js" defer></script>`}`;
+}
+
 export async function renderRegister(request: Request, env: Env): Promise<Response> {
   const openEvent = await getOpenEvent(env.DB);
   const state = publicRegistrationState(openEvent);
@@ -379,57 +446,7 @@ export async function renderRegister(request: Request, env: Env): Promise<Respon
   const when = openEvent ? formatEventWhen(openEvent.held_at) : "";
   const where = openEvent ? eventVenue(openEvent, env) : "";
 
-  const formBlock =
-    state === "open" && openEvent
-      ? `<div class="register-card">
-      <div class="register-event">
-        <p class="register-event-title">${escapeHtml(openEvent.title)}</p>
-        <p class="register-event-line">${regIcon("calendar")}<span>${escapeHtml(when)}</span></p>
-        <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
-      </div>
-      <div id="register-panel">
-      <div id="register-confirm" class="register-confirm" role="status" aria-live="polite" hidden>
-        <div class="reg-stage" aria-hidden="true">
-          <span class="reg-trail"></span>
-          <img class="reg-plane" src="/brand/airplane-red-flipped.svg" alt="" width="54" height="36" />
-          <div class="reg-burst">${confettiPieces()}</div>
-          <svg class="reg-check" viewBox="0 0 52 52">
-            <circle class="reg-check-ring" cx="26" cy="26" r="23" />
-            <path class="reg-check-tick" d="M15 27.5l7.2 7L37.5 19" />
-          </svg>
-        </div>
-        <p class="register-confirm-kicker" id="register-confirm-kicker"></p>
-        <p class="register-confirm-body" id="register-status"></p>
-        <div class="reg-done-event" id="reg-done-event">
-          <p class="reg-done-event-title">${escapeHtml(openEvent.title)}</p>
-          <p class="register-event-line">${regIcon("calendar")}<span>${escapeHtml(when)}</span></p>
-          <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
-        </div>
-        <a class="btn btn-ghost reg-done-cal" id="register-confirm-cal" href="#" download="ofw-tambayan.ics">${regIcon("calendar")}Add to calendar</a>
-      </div>
-      <form id="register-form" class="form form-register" method="post" action="/api/register" novalidate>
-        <label>
-          <span class="field-label">Name <em>required</em> <span class="field-hint" data-for="name"></span></span>
-          <input name="name" type="text" autocomplete="name" required maxlength="120" />
-        </label>
-        <label>
-          <span class="field-label">Email <em>optional</em> <span class="field-hint" data-for="email"></span></span>
-          <input name="email" type="email" autocomplete="email" maxlength="200" />
-        </label>
-        <label>
-          <span class="field-label">Mobile <em>required</em> <span class="field-hint" data-for="mobile"></span></span>
-          <input name="mobile" type="tel" inputmode="tel" autocomplete="tel" required placeholder="+65…" maxlength="20" />
-        </label>
-        <label class="check">
-          <input name="privacy" type="checkbox" value="1" required />
-          <span class="field-label">I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> <span class="field-hint" data-for="privacy"></span></span>
-        </label>
-        <button class="btn btn-cta" type="submit">Register</button>
-      </form>
-      </div>
-      </div>
-      <script src="/register.js" defer></script>`
-      : statusPanel;
+  const formBlock = state === "open" && openEvent ? registerFormCard(env, openEvent) : statusPanel;
 
   const body = `
     <section class="page-section register-page"${

@@ -236,6 +236,21 @@ a:hover { color: var(--accent); }
 .site-header--home .nav-parent { color: rgba(245, 244, 244, 0.88); }
 .site-header--home .nav-parent:hover,
 .site-header--home .nav-group.is-open .nav-parent { color: #fff; }
+/* The admin-only Draft preview: same register-card markup as the real page, plus this banner. */
+.register-preview-banner {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(234, 161, 47, 0.12);
+  border: 1px solid rgba(234, 161, 47, 0.35);
+  color: var(--accent-deep);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.event-preview-dialog { background: transparent; box-shadow: none; padding: 0; width: min(28rem, 100%); }
+.event-preview-dialog .reg-modal-head { padding: 1.1rem 1.1rem 0.4rem; }
+.event-preview-body { padding: 0 1.1rem 1.1rem; max-height: min(88dvh, 100%); overflow: auto; }
+.event-preview-body .register-card { margin: 0; }
 /* —— Registration: event summary and the animated confirmation —— */
 .register-event {
   margin: 0 0 1.4rem;
@@ -1455,6 +1470,8 @@ body.page-register:has(.register-page.is-done) .site-footer {
   margin-top: 0.35rem;
   min-width: 12rem;
 }
+/* Only ever true in the admin Draft preview — the real page's button is never disabled. */
+.form-register .btn-cta:disabled { opacity: 0.55; cursor: not-allowed; }
 /* Desktop: one centred column, the form sits in a card */
 @media (min-width: 721px) {
   .register-page { max-width: 31rem; margin-inline: auto; }

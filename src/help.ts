@@ -190,6 +190,18 @@ const sections: Section[] = [
         shots: [{ name: "event-gospel-weekend", alt: "The Gospel Weekend sync field on the event form", path: "/admin/events" }],
       },
       {
+        id: "event-preview",
+        q: "Can I see what the registration form looks like before I open it?",
+        a: `<p>Yes — for a <strong>Draft</strong> event only, since an Open event's own <a href="/register" target="_blank">Register page</a> already shows this for real.</p>
+        <ol>
+          <li>Go to <strong>Events</strong> and find the Draft event.</li>
+          <li>Tap <strong>Preview</strong>.</li>
+        </ol>
+        <p>A window opens showing the event's name, date, venue and the sign-up form exactly as a guest would see it. You can type into the fields to see how they behave, but the <strong>Register</strong> button is switched off — nothing you enter here is ever saved or sent anywhere. Tap the <strong>×</strong> to close it.</p>
+        <p>The preview always shows what you last saved, so if you change anything afterward — the venue, the announcement — save first, then preview again to see the real result.</p>`,
+        shots: [{ name: "event-preview", alt: "The registration form preview overlay for a Draft event", path: "/admin/events" }],
+      },
+      {
         id: "event-delete",
         q: "Can I delete an event?",
         a: `<p>Only an <strong>empty Draft</strong>: one that has no guests and no photos. That keeps guest lists and reports complete.</p>

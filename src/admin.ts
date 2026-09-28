@@ -42,6 +42,7 @@ import {
 } from "./helpers";
 import { GOSPEL_WEEKEND_DATES, isGospelWeekendDate } from "./gospel-weekend-sync";
 import { helpBody } from "./help";
+import { registerFormCard } from "./public";
 import { layout } from "./layout";
 import {
   analyze,
@@ -326,6 +327,7 @@ export async function handleAdmin(request: Request, env: Env, path: string): Pro
 
   if (path === "/admin" || path === "/admin/") return renderDashboard(request, env);
   if (path === "/admin/events") return handleAdminEvents(request, env);
+  if (path === "/admin/events/preview") return renderEventPreview(request, env);
   if (path === "/admin/announcement") {
     return new Response(null, { status: 302, headers: { Location: "/admin/events" } });
   }
@@ -1001,6 +1003,20 @@ async function renderDashboard(request: Request, env: Env): Promise<Response> {
   return html(adminShell(env, request, "Dashboard", body, "dashboard"));
 }
 
+/**
+ * GET /admin/events/preview?id=… — the registration-form fragment for one event, so an admin can
+ * see how a Draft event will look before opening it. Admin-only: a Draft is Draft specifically to
+ * keep an event off the public site until it's ready, and this route would defeat that if it were
+ * reachable without a session, so it never renders outside requireAdmin above. Returns just the
+ * fragment (no page chrome) — the Events page fetches it into an overlay.
+ */
+async function renderEventPreview(request: Request, env: Env): Promise<Response> {
+  const id = new URL(request.url).searchParams.get("id") || "";
+  const event = await env.DB.prepare(`SELECT * FROM events WHERE id = ?`).bind(id).first<EventRow>();
+  if (!event) return html(`<p class="notice">This event no longer exists.</p>`, 404);
+  return html(registerFormCard(env, event, { preview: true }));
+}
+
 async function handleAdminEvents(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const editId = url.searchParams.get("id") || "";
@@ -1032,6 +1048,11 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
             </div>
             <div class="admin-row-actions">
               <a class="btn btn-ghost btn-sm" data-edit="${escapeHtml(e.id)}" href="/admin/events?id=${escapeHtml(e.id)}#event-form">${e.id === editing?.id ? "Editing" : "Edit"}</a>
+              ${
+                e.status === "draft"
+                  ? `<button type="button" class="btn btn-ghost btn-sm" data-preview="${escapeHtml(e.id)}" aria-label="Preview the registration form for ${escapeHtml(e.title)}">Preview</button>`
+                  : ""
+              }
               ${
                 e.status === "open"
                   ? `<button type="button" class="btn btn-ghost btn-sm" data-status="${escapeHtml(e.id)}" data-to="closed">Force close</button>`
@@ -1191,6 +1212,16 @@ async function handleAdminEvents(request: Request, env: Env): Promise<Response> 
           <p id="event-status" class="form-status" role="status"></p>
         </form>
       </section>
+    </div>
+    <div class="reg-modal" id="event-preview-modal" hidden>
+      <button type="button" class="reg-modal-backdrop" data-close-preview tabindex="-1" aria-label="Close"></button>
+      <div class="reg-modal-dialog event-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="event-preview-title">
+        <div class="reg-modal-head">
+          <h2 id="event-preview-title">Preview</h2>
+          <button type="button" class="reg-modal-close reg-modal-x" data-close-preview aria-label="Close"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </div>
+        <div id="event-preview-body" class="event-preview-body" aria-live="polite"></div>
+      </div>
     </div>
     <script src="/admin/events.js" defer></script>`;
 

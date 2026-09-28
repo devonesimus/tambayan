@@ -296,4 +296,39 @@
     });
     paint();
   }
+
+  // Preview a Draft event's registration form, fetched fresh every time so it never shows a stale
+  // version of unsaved edits. The fragment itself already disables submission (see registerFormCard
+  // in src/public.ts) — this dialog only handles opening, loading, and closing.
+  const previewModal = document.getElementById("event-preview-modal");
+  const previewBody = document.getElementById("event-preview-body");
+  const previewTitle = document.getElementById("event-preview-title");
+  if (previewModal && previewBody && previewTitle) {
+    function closePreview() {
+      previewModal.hidden = true;
+      document.removeEventListener("keydown", onPreviewKey);
+    }
+    function onPreviewKey(e) {
+      if (e.key === "Escape") closePreview();
+    }
+    previewModal.querySelectorAll("[data-close-preview]").forEach((el) => el.addEventListener("click", closePreview));
+
+    document.querySelectorAll("[data-preview]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-preview");
+        previewTitle.textContent = "Preview";
+        previewBody.innerHTML = "<p class=\"notice\">Loading preview…</p>";
+        previewModal.hidden = false;
+        document.addEventListener("keydown", onPreviewKey);
+        try {
+          const res = await fetch(`/admin/events/preview?id=${encodeURIComponent(id)}`);
+          const text = await res.text();
+          if (!res.ok) throw new Error("Could not load the preview.");
+          previewBody.innerHTML = text;
+        } catch (err) {
+          previewBody.innerHTML = `<p class="notice">${err instanceof Error ? err.message : "Could not load the preview."}</p>`;
+        }
+      });
+    });
+  }
 })();
