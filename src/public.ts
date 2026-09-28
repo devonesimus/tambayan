@@ -586,7 +586,7 @@ export async function handleRegisterApi(request: Request, env: Env, ctx: Executi
       }
     }
     ctx.waitUntil(
-      syncGospelWeekendAttendanceAndLog(env, event, {
+      syncGospelWeekendAttendanceAndLog(env, event, keeper.id, {
         name: merged.name,
         email: merged.email || null,
         mobile: merged.mobile,
@@ -610,7 +610,7 @@ export async function handleRegisterApi(request: Request, env: Env, ctx: Executi
     .bind(id, event.id, name, email || null, mobileNorm, now, personId, now)
     .run();
 
-  ctx.waitUntil(syncGospelWeekendAttendanceAndLog(env, event, { name, email: email || null, mobile: mobileNorm }));
+  ctx.waitUntil(syncGospelWeekendAttendanceAndLog(env, event, id, { name, email: email || null, mobile: mobileNorm }));
   return json({ ok: true, already: false, id, event: { id: event.id, title: event.title } });
 }
 

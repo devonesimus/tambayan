@@ -37,6 +37,8 @@ export type RegistrationRow = {
   attended: number;
   person_id: string | null;
   created_at: string;
+  /** Set once this registration syncs to Gospel Weekend (gospel-weekend-sync.ts); null otherwise. */
+  gospel_weekend_registration_id: string | null;
 };
 
 export type PersonRow = {

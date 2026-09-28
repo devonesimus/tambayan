@@ -40,7 +40,12 @@ import {
   type RegistrationRow,
   type VideoRow,
 } from "./helpers";
-import { GOSPEL_WEEKEND_DATES, isGospelWeekendDate, syncGospelWeekendAttendanceAndLog } from "./gospel-weekend-sync";
+import {
+  GOSPEL_WEEKEND_DATES,
+  isGospelWeekendDate,
+  syncGospelWeekendAttendanceAndLog,
+  unsyncGospelWeekendAttendanceAndLog,
+} from "./gospel-weekend-sync";
 import { helpBody } from "./help";
 import { registerFormCard } from "./public";
 import { layout } from "./layout";
@@ -352,7 +357,7 @@ export async function handleAdmin(request: Request, env: Env, path: string, ctx:
     return apiAdminUpdateRegistration(request, env, auth.email);
   }
   if (path === "/api/admin/registrations/delete" && request.method === "POST") {
-    return apiAdminDeleteRegistration(request, env, auth.email);
+    return apiAdminDeleteRegistration(request, env, auth.email, ctx);
   }
   if (path === "/api/admin/registrations/attendance" && request.method === "POST") {
     return apiAdminSetAttendance(request, env, auth.email);
@@ -1740,7 +1745,7 @@ async function apiAdminCreateRegistration(request: Request, env: Env, actor: str
   });
 
   ctx.waitUntil(
-    syncGospelWeekendAttendanceAndLog(env, event, {
+    syncGospelWeekendAttendanceAndLog(env, event, id, {
       name: savedName,
       email: email || person?.email || null,
       mobile: mobileNorm || person?.mobile || "",
@@ -1849,18 +1854,25 @@ async function apiAdminUpdateRegistration(request: Request, env: Env, actor: str
   return json({ ok: true, id, moved: moving, attendance_reset: attendanceReset });
 }
 
-async function apiAdminDeleteRegistration(request: Request, env: Env, actor: string): Promise<Response> {
+async function apiAdminDeleteRegistration(request: Request, env: Env, actor: string, ctx: ExecutionContext): Promise<Response> {
   const body = (await request.json()) as { id?: string };
   const id = String(body.id || "").trim();
   if (!id) return json({ error: "id required" }, 400);
 
   const row = await env.DB.prepare(
-    `SELECT r.id, r.name, e.title AS event_title
+    `SELECT r.id, r.name, r.gospel_weekend_registration_id, e.id AS event_id, e.title AS event_title, e.gospel_weekend_date
      FROM registrations r JOIN events e ON e.id = r.event_id
      WHERE r.id = ?`,
   )
     .bind(id)
-    .first<{ id: string; name: string; event_title: string }>();
+    .first<{
+      id: string;
+      name: string;
+      gospel_weekend_registration_id: string | null;
+      event_id: string;
+      event_title: string;
+      gospel_weekend_date: string | null;
+    }>();
   if (!row) return json({ error: "Registration not found." }, 404);
 
   // Only this registration goes. The person, their other registrations and any duplicate flags stay.
@@ -1872,6 +1884,14 @@ async function apiAdminDeleteRegistration(request: Request, env: Env, actor: str
     targetId: id,
     summary: `Removed ${row.name} from ${shortEventTitle(row.event_title)}`,
   });
+
+  ctx.waitUntil(
+    unsyncGospelWeekendAttendanceAndLog(
+      env,
+      { id: row.event_id, title: row.event_title, gospel_weekend_date: row.gospel_weekend_date },
+      { name: row.name, gospel_weekend_registration_id: row.gospel_weekend_registration_id },
+    ),
+  );
 
   return json({ ok: true, id });
 }
