@@ -236,7 +236,8 @@ a:hover { color: var(--accent); }
 .site-header--home .nav-parent { color: rgba(245, 244, 244, 0.88); }
 .site-header--home .nav-parent:hover,
 .site-header--home .nav-group.is-open .nav-parent { color: #fff; }
-/* The admin-only Draft preview: same register-card markup as the real page, plus this banner. */
+/* The admin-only Draft preview: same register-card markup as the real page, plus this banner.
+   The panel itself is styled with the modal rules further down (#event-preview-modal). */
 .register-preview-banner {
   margin: 0 0 1rem;
   padding: 0.6rem 0.85rem;
@@ -247,10 +248,6 @@ a:hover { color: var(--accent); }
   font-size: 0.85rem;
   font-weight: 600;
 }
-.event-preview-dialog { background: transparent; box-shadow: none; padding: 0; width: min(28rem, 100%); }
-.event-preview-dialog .reg-modal-head { padding: 1.1rem 1.1rem 0.4rem; }
-.event-preview-body { padding: 0 1.1rem 1.1rem; max-height: min(88dvh, 100%); overflow: auto; }
-.event-preview-body .register-card { margin: 0; }
 /* —— Registration: event summary and the animated confirmation —— */
 .register-event {
   margin: 0 0 1.4rem;
@@ -3365,6 +3362,90 @@ a.pp-name:hover { text-decoration: underline; }
 }
 .reg-modal .form input,
 .reg-modal .form select { width: 100%; }
+.reg-modal .form .check input {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+}
+.reg-modal .form .check { min-width: 0; }
+.reg-modal .form .check .field-label { min-width: 0; }
+
+/* Draft registration preview: one panel, the guest form, nothing from the edit page showing through. */
+#event-preview-modal .reg-modal-backdrop {
+  background: rgba(18, 24, 48, 0.62);
+}
+#event-preview-modal .event-preview-dialog {
+  --ink: #1a1f2e;
+  --muted: #5c6578;
+  --accent: var(--ofw-royal);
+  --accent-deep: var(--ofw-navy);
+  --line: rgba(39, 52, 107, 0.1);
+  display: flex;
+  flex-direction: column;
+  width: min(32rem, calc(100vw - 1.5rem));
+  max-height: min(92dvh, 100%);
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 16px;
+  background: #fff;
+  color: #1a1f2e;
+  box-shadow: 0 24px 60px rgba(18, 24, 48, 0.28);
+}
+#event-preview-modal .reg-modal-head {
+  flex: none;
+  margin: 0;
+  padding: 0.95rem 1.15rem;
+  border-bottom: 1px solid rgba(39, 52, 107, 0.1);
+}
+#event-preview-modal .reg-modal-head h2 {
+  color: #1a1f2e;
+  font-size: 1rem;
+}
+#event-preview-modal .reg-modal-x {
+  background: rgba(39, 52, 107, 0.07);
+  color: #5c6578;
+}
+#event-preview-modal .event-preview-body {
+  padding: 1.15rem 1.25rem 1.35rem;
+  overflow: auto;
+  background: #fff;
+}
+#event-preview-modal .register-card {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+#event-preview-modal .register-event {
+  background: rgba(39, 52, 107, 0.035);
+  border-color: transparent;
+}
+#event-preview-modal .form input,
+#event-preview-modal .form select {
+  background: #fff;
+  color: #1a1f2e;
+  border-color: rgba(39, 52, 107, 0.16);
+}
+#event-preview-modal .form .check input {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+@media (min-width: 720px) {
+  #event-preview-modal .event-preview-dialog {
+    width: min(32rem, calc(100vw - 3rem));
+    padding: 0;
+    border-radius: 16px;
+  }
+}
+@media (max-width: 719px) {
+  #event-preview-modal .event-preview-dialog {
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+  }
+}
 .reg-modal-head {
   display: flex;
   align-items: center;
