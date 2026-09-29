@@ -88,12 +88,16 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
   // Organisers' announcement for this event, shown in the hero when they wrote one.
   const announcementTitle = live || after ? "" : (event?.announcement_title || "").trim();
   const announcementBody = live || after ? "" : event ? eventAnnouncementBody(event) : "";
+  // Whether that Oct 11-style gathering also doubles as a Gospel Weekend day (gospel-weekend-sync.ts).
+  const gospelWeekend = Boolean(event?.gospel_weekend_date) && !live && !after;
   const heroLine =
     live && event
       ? `Today · ${timeWindow(event.held_at)}`
       : after && event
         ? `${dayLabel(event.held_at)} was a joy.`
         : "";
+  // True exactly when the clamped .hero-announcement paragraph below is rendered — home.js only needs loading then.
+  const showsAnnouncement = !heroLine && Boolean(announcementBody);
   const heroNext = after ? `Keep checking this page or our ${facebookPill(env)} for the next Tambayan.` : "";
   // Before and during a gathering the badge reassures. After one it invites people back.
   const freeLabel = after ? "Join us next time! It’s free!" : "Free to join";
@@ -169,6 +173,7 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
           ${heroNext ? `<p class="hero-next">${heroNext}</p>` : ""}
           ${event ? photoThumbs(preview, event.slug, event.title, "hero-thumbs") : ""}
           <p class="hero-venue">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
+          ${gospelWeekend ? `<p class="hero-venue hero-gw">${regIcon("sparkle")}<span>Also part of Gospel Weekend</span></p>` : ""}
           <div class="hero-cta">${cta}<span class="hero-free${after ? " hero-free--again" : ""}"><svg class="hero-free-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V10a2 2 0 0 0 0 4v2.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V14a2 2 0 0 0 0-4z"/><path d="M14 6.5v11" stroke-dasharray="1.6 2"/></svg><span>${escapeHtml(freeLabel)}</span></span></div>
           <div class="hero-secondary">
             <a href="${escapeHtml(env.FACEBOOK_URL)}" target="_blank" rel="noopener noreferrer">Facebook</a>
@@ -181,7 +186,8 @@ export async function renderHome(request: Request, env: Env): Promise<Response> 
       </div>
     </section>
     ${hashtags}
-    ${photos}`;
+    ${photos}
+    ${showsAnnouncement ? `<script src="/home.js" defer></script>` : ""}`;
 
   return html(
     layout({
@@ -283,6 +289,7 @@ async function renderPhotoRow(env: Env): Promise<string> {
 const regIcons: Record<string, string> = {
   calendar: `<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>`,
   pin: `<path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/>`,
+  sparkle: `<path d="M12 2c.6 3.4 2 5.6 5 7-3 1.4-4.4 3.6-5 7-.6-3.4-2-5.6-5-7 3-1.4 4.4-3.6 5-7z" fill="currentColor" stroke="none"/>`,
 };
 
 function regIcon(name: string): string {
@@ -316,7 +323,8 @@ export function registerFormCard(env: Env, event: EventRow, opts: { preview?: bo
   const where = eventVenue(event, env);
   const eventLines = `<p class="register-event-title">${escapeHtml(event.title)}</p>
         <p class="register-event-line">${regIcon("calendar")}<span>${escapeHtml(when)}</span></p>
-        <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>`;
+        <p class="register-event-line">${regIcon("pin")}<span>${escapeHtml(where)}</span></p>
+        ${event.gospel_weekend_date ? `<p class="register-event-line">${regIcon("sparkle")}<span>Also part of Gospel Weekend</span></p>` : ""}`;
 
   return `<div class="register-card">
       ${preview ? `<p class="register-preview-banner">Preview only — this can’t be submitted here.</p>` : ""}
