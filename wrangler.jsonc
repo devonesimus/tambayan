@@ -21,7 +21,7 @@
     {
       "binding": "DB",
       "database_name": "tambayan-db",
-      "database_id": "b10b3870-29c0-41aa-b52d-5c467d31185b",
+      "database_id": "f823a2e6-3315-4c9a-9f8d-42ea2271f4b8",
       "migrations_dir": "migrations"
     }
   ],
@@ -30,14 +30,6 @@
       "binding": "GALLERY",
       "bucket_name": "tambayan-gallery",
       "preview_bucket_name": "tambayan-gallery"
-    }
-  ],
-  // Private Worker-to-Worker call to the Gospel Weekend site (same Cloudflare account), used only
-  // when an event's gospel_weekend_date is set. See src/gospel-weekend-sync.ts.
-  "services": [
-    {
-      "binding": "GOSPEL_WEEKEND",
-      "service": "pinoy-rag-agent"
     }
   ],
   "routes": [

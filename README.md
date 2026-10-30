@@ -63,11 +63,11 @@ Useful paths:
 
 ## Deploy (production)
 
-Cloudflare resources are provisioned for this account:
+Cloudflare resources live in the devpinoysdasg@gmail.com account (moved from the Onesimus account on 2026-10-30, together with the `fsdac.app` domain):
 
 - D1 `tambayan-db` (id in `wrangler.jsonc`)
 - R2 `tambayan-gallery`
-- Worker custom domain / route for `tambayan.fsdac.app` — **DNS still needs Adrian** if the API token lacks Zone DNS write (hostname may not resolve until a proxied record exists, same as Gospel Weekend setup)
+- Worker custom domain `tambayan.fsdac.app` (created by `wrangler deploy` from the `routes` block)
 
 Then:
 
@@ -76,9 +76,7 @@ Then:
 3. `npm run db:migrate:remote`
 4. Seed admins: `wrangler d1 execute tambayan-db --remote --file=./seeds/seed.local.sql`
 5. `npm run deploy`  
-   Or push to `main` — GitHub Action `.github/workflows/deploy.yml` uses:
-   - `CLOUDFLARE_API_TOKEN`
-   - `CLOUDFLARE_ACCOUNT_ID`
+   Or push to `main` — Cloudflare Workers Builds (Worker `ofw-tambayan` → Settings → Builds, connected to this GitHub repo) builds and deploys it. There is no GitHub Action. Migrations are never part of the build; run step 3 first when a change needs new columns.
 
 ## Admin model
 
@@ -88,7 +86,7 @@ A few seeded email/password admins (PBKDF2 hashes in D1). Cookie session is HMAC
 
 An event's **Gospel Weekend sync** field (Edit Event form, `events.gospel_weekend_date`) mirrors a public sign-up into the sibling `pinoy-rag-agent` Worker (`gospelweekend.fsdac.app`) as that day's attendance — for a Tambayan gathering that doubles as one day of that church-wide event. It's `NULL`/unset for every ordinary event and does nothing until an admin sets it.
 
-Reaches the other Worker over a Cloudflare Service Binding (`wrangler.jsonc`: `services` → `GOSPEL_WEEKEND`, same Cloudflare account, both Workers must be deployed) rather than the public internet, authenticated with the shared `TAMBAYAN_SYNC_TOKEN` secret (must be set to the same value on both Workers). The sync runs in the background (`ctx.waitUntil`) after the guest's own registration is saved — a Tambayan sign-up always succeeds even if the other Worker is unreachable, and a failure there is recorded in Activity (`gospel_weekend.sync_failed`) rather than shown to the guest. See `src/gospel-weekend-sync.ts`.
+Reaches the other Worker over a Cloudflare Service Binding (`services` → `GOSPEL_WEEKEND`, same Cloudflare account, both Workers must be deployed). **Currently not configured**: `pinoy-rag-agent` stayed in the old account, so the `services` block was removed from `wrangler.jsonc` and the sync reports an error (logged in Activity) if an event sets a Gospel Weekend date. Add the block back when that Worker moves rather than the public internet, authenticated with the shared `TAMBAYAN_SYNC_TOKEN` secret (must be set to the same value on both Workers). The sync runs in the background (`ctx.waitUntil`) after the guest's own registration is saved — a Tambayan sign-up always succeeds even if the other Worker is unreachable, and a failure there is recorded in Activity (`gospel_weekend.sync_failed`) rather than shown to the guest. See `src/gospel-weekend-sync.ts`.
 
 ## Design
 
