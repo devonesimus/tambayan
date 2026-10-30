@@ -1,5 +1,6 @@
 {
   "name": "ofw-tambayan",
+  "account_id": "8cd3fc30bb68349614e9e794a488147f",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
