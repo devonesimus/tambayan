@@ -2482,14 +2482,20 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
     imagesHtml =
       images.results.length === 0
         ? `<p class="notice">No photos yet for this event. Upload anytime — registration status does not matter.</p>`
-        : `<ul class="admin-photo-list">
+        : `<ul class="admin-photo-list" data-gallery>
           ${images.results
-            .map((img: Record<string, unknown>) => {
+            .map((img: Record<string, unknown>, i: number) => {
               const key = String(img.r2_key);
               const id = String(img.id);
               const caption = String(img.caption || "").trim();
+              const src = `/api/media/${encodeURIComponent(key)}`;
+              const viewLabel = caption
+                ? `View photo: ${caption}`
+                : `View photo ${i + 1} of ${images.results.length}`;
               return `<li>
-                <img src="/api/media/${encodeURIComponent(key)}" alt="${escapeHtml(caption)}" loading="lazy" />
+                <button type="button" class="admin-photo-open" data-gallery-src="${escapeHtml(src)}" aria-label="${escapeHtml(viewLabel)}">
+                  <img src="${escapeHtml(src)}" alt="${escapeHtml(caption)}" loading="lazy" decoding="async" />
+                </button>
                 <button type="button" class="admin-photo-delete" data-delete-image="${escapeHtml(id)}" aria-label="Delete photo${caption ? `: ${escapeHtml(caption)}` : ""}" title="Delete photo">${menuIcon("trash")}</button>
                 <p class="admin-photo-caption${caption ? "" : " is-empty"}">${escapeHtml(caption || "No caption")}</p>
               </li>`;
@@ -2557,6 +2563,7 @@ async function handleAdminGallery(request: Request, env: Env): Promise<Response>
       </div>
       <div id="gallery-list">${imagesHtml}</div>
     </section>
+    ${photoCount > 0 ? `<script src="/gallery-lightbox.js" defer></script>` : ""}
     <script src="/admin/gallery.js" defer></script>`;
 
   return html(adminShell(env, request, "Gallery", body, "gallery"));
