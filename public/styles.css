@@ -4926,6 +4926,8 @@ body.gal-lightbox-open { overflow: hidden; }
   max-width: 100vw;
   height: 100vh;
   max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   margin: 0;
   padding: 0;
   border: 0;
@@ -4941,7 +4943,7 @@ body.gal-lightbox-open { overflow: hidden; }
   top: 0;
   left: 0;
   right: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -4996,6 +4998,7 @@ body.gal-lightbox-open { overflow: hidden; }
   justify-self: center;
   max-width: min(100%, 1100px);
   max-height: calc(100vh - 5.5rem);
+  max-height: calc(100dvh - 5.5rem);
   width: auto;
   height: auto;
   object-fit: contain;
@@ -5006,7 +5009,7 @@ body.gal-lightbox-open { overflow: hidden; }
 }
 .gal-lightbox-stage img.is-swap { opacity: 0; }
 .gal-lightbox-nav {
-  z-index: 1;
+  z-index: 2;
   display: grid;
   place-items: center;
   width: 2.75rem;
@@ -5014,10 +5017,11 @@ body.gal-lightbox-open { overflow: hidden; }
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(248, 249, 251, 0.88);
+  background: rgba(248, 249, 251, 0.94);
   color: var(--ofw-navy);
   font: 500 1.65rem/1 var(--font-body);
   cursor: pointer;
+  box-shadow: 0 1px 10px rgba(14, 19, 38, 0.28);
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 .gal-lightbox-prev { grid-column: 1; grid-row: 1; }
@@ -5029,24 +5033,54 @@ body.gal-lightbox-open { overflow: hidden; }
 }
 .gal-lightbox-nav[hidden] { display: none; }
 
+/*
+  Mobile: side prev/next in the same row as the image (aligned to the photo,
+  not the dialog). Extra bottom padding biases the stage toward ~42% from the
+  top of the dynamic viewport so Safari chrome doesn’t crowd a true-center image.
+*/
 @media (max-width: 640px) {
   .gal-lightbox-stage {
-    grid-template-columns: 1fr;
-    padding-inline: 0.35rem;
+    grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+    align-items: center;
+    gap: 0.15rem;
+    padding:
+      max(3.5rem, calc(env(safe-area-inset-top, 0px) + 3rem))
+      max(0.35rem, env(safe-area-inset-right, 0px))
+      /* Asymmetric: ~10–12vh extra bottom → optical center above 50% */
+      max(calc(3.5rem + 11vh), calc(env(safe-area-inset-bottom, 0px) + 11vh + 2.5rem))
+      max(0.35rem, env(safe-area-inset-left, 0px));
   }
   .gal-lightbox-stage img {
-    grid-column: 1;
+    grid-column: 1 / -1;
+    grid-row: 1;
+    z-index: 0;
+    justify-self: center;
     max-width: 100%;
-    max-height: calc(100vh - 6.5rem);
+    max-height: calc(100vh - 9.5rem);
+    max-height: calc(100dvh - 9.5rem);
   }
   .gal-lightbox-nav {
-    position: absolute;
-    bottom: max(1rem, env(safe-area-inset-bottom));
-    width: 2.5rem;
-    height: 2.5rem;
+    position: relative;
+    top: auto;
+    transform: none;
+    width: 2.75rem;
+    height: 2.75rem;
+    z-index: 2;
+    margin: 0;
   }
-  .gal-lightbox-prev { left: max(0.75rem, env(safe-area-inset-left)); }
-  .gal-lightbox-next { right: max(0.75rem, env(safe-area-inset-right)); left: auto; }
+  .gal-lightbox-prev {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    left: auto;
+  }
+  .gal-lightbox-next {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    left: auto;
+    right: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
