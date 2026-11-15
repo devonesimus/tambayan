@@ -5034,44 +5034,52 @@ body.gal-lightbox-open { overflow: hidden; }
 .gal-lightbox-nav[hidden] { display: none; }
 
 /*
-  Mobile: keep prev/next mid-height at the sides.
-  Bottom-docked controls sit under iPhone Safari's toolbar (100vh > visual viewport).
+  Mobile: side prev/next in the same row as the image (aligned to the photo,
+  not the dialog). Extra bottom padding biases the stage toward ~42% from the
+  top of the dynamic viewport so Safari chrome doesn’t crowd a true-center image.
 */
 @media (max-width: 640px) {
   .gal-lightbox-stage {
-    grid-template-columns: 1fr;
+    grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+    align-items: center;
+    gap: 0.15rem;
     padding:
-      max(3.75rem, calc(env(safe-area-inset-top, 0px) + 3.25rem))
-      max(3.25rem, calc(env(safe-area-inset-right, 0px) + 2.75rem))
-      max(1.5rem, env(safe-area-inset-bottom, 0px))
-      max(3.25rem, calc(env(safe-area-inset-left, 0px) + 2.75rem));
+      max(3.5rem, calc(env(safe-area-inset-top, 0px) + 3rem))
+      max(0.35rem, env(safe-area-inset-right, 0px))
+      /* Asymmetric: ~10–12vh extra bottom → optical center above 50% */
+      max(calc(3.5rem + 11vh), calc(env(safe-area-inset-bottom, 0px) + 11vh + 2.5rem))
+      max(0.35rem, env(safe-area-inset-left, 0px));
   }
   .gal-lightbox-stage img {
-    grid-column: 1;
+    grid-column: 1 / -1;
     grid-row: 1;
+    z-index: 0;
+    justify-self: center;
     max-width: 100%;
-    max-height: calc(100vh - 7rem);
-    max-height: calc(100dvh - 7rem);
+    max-height: calc(100vh - 9.5rem);
+    max-height: calc(100dvh - 9.5rem);
   }
   .gal-lightbox-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
+    position: relative;
+    top: auto;
+    transform: none;
     width: 2.75rem;
     height: 2.75rem;
-    /* Comfortable tap target beyond the visual circle */
+    z-index: 2;
     margin: 0;
   }
   .gal-lightbox-prev {
-    left: max(0.4rem, env(safe-area-inset-left, 0px));
-    grid-column: auto;
-    grid-row: auto;
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    left: auto;
   }
   .gal-lightbox-next {
-    right: max(0.4rem, env(safe-area-inset-right, 0px));
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
     left: auto;
-    grid-column: auto;
-    grid-row: auto;
+    right: auto;
   }
 }
 
@@ -5080,10 +5088,6 @@ body.gal-lightbox-open { overflow: hidden; }
   .photo-grid img { transition: none; }
   .gal-lightbox-close,
   .gal-lightbox-nav { transition: none; }
-  .gal-lightbox-nav { transform: none; }
-  @media (max-width: 640px) {
-    .gal-lightbox-nav { top: calc(50% - 1.375rem); }
-  }
 }
 
 html[data-admin-theme="dark"] body.page-admin .hp-jump a:hover { background: rgba(244, 241, 234, 0.08); }
