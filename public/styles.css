@@ -1577,11 +1577,19 @@ body.page-register:has(.register-page.is-done) .site-footer {
   margin-top: 0.35rem;
 }
 .photo-grid-item { margin: 0; }
-.photo-grid-item a {
+.photo-grid-open {
   display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
   overflow: hidden;
   border-radius: 8px;
   background: #e4e8f0;
+  cursor: zoom-in;
+}
+.photo-grid-open:focus-visible {
+  outline: 2px solid var(--ofw-royal);
+  outline-offset: 3px;
 }
 .photo-grid img {
   width: 100%;
@@ -1590,7 +1598,7 @@ body.page-register:has(.register-page.is-done) .site-footer {
   display: block;
   transition: transform 0.35s ease;
 }
-.photo-grid-item a:hover img { transform: scale(1.035); }
+.photo-grid-open:hover img { transform: scale(1.035); }
 .photo-grid figcaption {
   font-size: 0.85rem;
   color: var(--muted);
@@ -3692,6 +3700,20 @@ body.reg-modal-open { overflow: hidden; }
   gap: 0.4rem;
   min-width: 0;
 }
+.admin-photo-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.admin-photo-open:focus-visible {
+  outline: 2px solid var(--ofw-royal);
+  outline-offset: 2px;
+}
 .admin-photo-list img {
   display: block;
   width: 100%;
@@ -4896,6 +4918,143 @@ html[data-admin-theme="dark"] body.page-admin .site-footer a { color: inherit; }
 .hp-lightbox::backdrop { background: rgba(14, 19, 38, 0.72); }
 .hp-lightbox img { display: block; max-width: 96vw; max-height: 90vh; border-radius: 12px; background: #fff; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45); }
 .hp-lightbox-close { position: absolute; top: -2.5rem; right: 0; padding: 0.35rem 0.9rem; border: 0; border-radius: 999px; background: rgba(255, 255, 255, 0.92); color: #27346b; font: 600 0.82rem var(--font-body); cursor: pointer; }
+
+/* Public + admin gallery photo viewer */
+body.gal-lightbox-open { overflow: hidden; }
+.gal-lightbox {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #f7f8fb;
+  overflow: hidden;
+}
+.gal-lightbox::backdrop {
+  background: rgba(14, 19, 38, 0.82);
+}
+.gal-lightbox-chrome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.5rem max(1rem, env(safe-area-inset-left));
+  pointer-events: none;
+}
+.gal-lightbox-count {
+  margin: 0;
+  margin-right: auto;
+  font: 600 0.82rem/1.2 var(--font-body);
+  letter-spacing: 0.04em;
+  color: rgba(247, 248, 251, 0.78);
+  pointer-events: none;
+}
+.gal-lightbox-close {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(248, 249, 251, 0.92);
+  color: var(--ofw-navy);
+  font: 500 1.55rem/1 var(--font-body);
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.gal-lightbox-close:hover { background: #fff; }
+.gal-lightbox-close:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.gal-lightbox-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.25rem;
+  padding:
+    max(3.5rem, calc(env(safe-area-inset-top) + 3rem))
+    max(0.5rem, env(safe-area-inset-right))
+    max(1.25rem, env(safe-area-inset-bottom))
+    max(0.5rem, env(safe-area-inset-left));
+}
+.gal-lightbox-stage img {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  max-width: min(100%, 1100px);
+  max-height: calc(100vh - 5.5rem);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 4px;
+  background: transparent;
+  opacity: 1;
+  transition: opacity 0.18s ease;
+}
+.gal-lightbox-stage img.is-swap { opacity: 0; }
+.gal-lightbox-nav {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(248, 249, 251, 0.88);
+  color: var(--ofw-navy);
+  font: 500 1.65rem/1 var(--font-body);
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.gal-lightbox-prev { grid-column: 1; grid-row: 1; }
+.gal-lightbox-next { grid-column: 3; grid-row: 1; }
+.gal-lightbox-nav:hover { background: #fff; }
+.gal-lightbox-nav:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.gal-lightbox-nav[hidden] { display: none; }
+
+@media (max-width: 640px) {
+  .gal-lightbox-stage {
+    grid-template-columns: 1fr;
+    padding-inline: 0.35rem;
+  }
+  .gal-lightbox-stage img {
+    grid-column: 1;
+    max-width: 100%;
+    max-height: calc(100vh - 6.5rem);
+  }
+  .gal-lightbox-nav {
+    position: absolute;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .gal-lightbox-prev { left: max(0.75rem, env(safe-area-inset-left)); }
+  .gal-lightbox-next { right: max(0.75rem, env(safe-area-inset-right)); left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gal-lightbox-stage img { transition: none; }
+  .photo-grid img { transition: none; }
+  .gal-lightbox-close,
+  .gal-lightbox-nav { transition: none; }
+}
 
 html[data-admin-theme="dark"] body.page-admin .hp-jump a:hover { background: rgba(244, 241, 234, 0.08); }
 html[data-admin-theme="dark"] body.page-admin .hp-frame { border-color: rgba(244, 241, 234, 0.14); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4); }

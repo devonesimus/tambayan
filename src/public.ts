@@ -749,18 +749,23 @@ export async function renderGalleryEvent(
           <p class="empty-state-title">Photos coming soon</p>
           <p class="empty-state-body">This gathering’s gallery is not published yet.</p>
         </div>`
-      : `<div class="photo-grid">
+      : `<div class="photo-grid" data-gallery>
         ${images.results
-          .map(
-            (img) => `<figure class="photo-grid-item">
-            <a href="/api/media/${encodeURIComponent(img.r2_key)}" target="_blank" rel="noopener">
-              <img src="/api/media/${encodeURIComponent(img.r2_key)}" alt="${escapeHtml(img.caption || event.title)}" loading="lazy" decoding="async" />
-            </a>
+          .map((img, i) => {
+            const src = `/api/media/${encodeURIComponent(img.r2_key)}`;
+            const label = img.caption
+              ? `View photo: ${img.caption}`
+              : `View photo ${i + 1} of ${images.results.length}`;
+            return `<figure class="photo-grid-item">
+            <button type="button" class="photo-grid-open" data-gallery-src="${escapeHtml(src)}" aria-label="${escapeHtml(label)}">
+              <img src="${escapeHtml(src)}" alt="${escapeHtml(img.caption || event.title)}" loading="lazy" decoding="async" />
+            </button>
             ${img.caption ? `<figcaption>${escapeHtml(img.caption)}</figcaption>` : ""}
-          </figure>`,
-          )
+          </figure>`;
+          })
           .join("")}
-      </div>`;
+      </div>
+      <script src="/gallery-lightbox.js" defer></script>`;
 
   const shareUrl = `${base}/gallery/${event.slug}`;
   const cover = event.cover_image_key
