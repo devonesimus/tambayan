@@ -4926,6 +4926,8 @@ body.gal-lightbox-open { overflow: hidden; }
   max-width: 100vw;
   height: 100vh;
   max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   margin: 0;
   padding: 0;
   border: 0;
@@ -4941,7 +4943,7 @@ body.gal-lightbox-open { overflow: hidden; }
   top: 0;
   left: 0;
   right: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -4996,6 +4998,7 @@ body.gal-lightbox-open { overflow: hidden; }
   justify-self: center;
   max-width: min(100%, 1100px);
   max-height: calc(100vh - 5.5rem);
+  max-height: calc(100dvh - 5.5rem);
   width: auto;
   height: auto;
   object-fit: contain;
@@ -5006,7 +5009,7 @@ body.gal-lightbox-open { overflow: hidden; }
 }
 .gal-lightbox-stage img.is-swap { opacity: 0; }
 .gal-lightbox-nav {
-  z-index: 1;
+  z-index: 2;
   display: grid;
   place-items: center;
   width: 2.75rem;
@@ -5014,10 +5017,11 @@ body.gal-lightbox-open { overflow: hidden; }
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(248, 249, 251, 0.88);
+  background: rgba(248, 249, 251, 0.94);
   color: var(--ofw-navy);
   font: 500 1.65rem/1 var(--font-body);
   cursor: pointer;
+  box-shadow: 0 1px 10px rgba(14, 19, 38, 0.28);
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 .gal-lightbox-prev { grid-column: 1; grid-row: 1; }
@@ -5029,24 +5033,46 @@ body.gal-lightbox-open { overflow: hidden; }
 }
 .gal-lightbox-nav[hidden] { display: none; }
 
+/*
+  Mobile: keep prev/next mid-height at the sides.
+  Bottom-docked controls sit under iPhone Safari's toolbar (100vh > visual viewport).
+*/
 @media (max-width: 640px) {
   .gal-lightbox-stage {
     grid-template-columns: 1fr;
-    padding-inline: 0.35rem;
+    padding:
+      max(3.75rem, calc(env(safe-area-inset-top, 0px) + 3.25rem))
+      max(3.25rem, calc(env(safe-area-inset-right, 0px) + 2.75rem))
+      max(1.5rem, env(safe-area-inset-bottom, 0px))
+      max(3.25rem, calc(env(safe-area-inset-left, 0px) + 2.75rem));
   }
   .gal-lightbox-stage img {
     grid-column: 1;
+    grid-row: 1;
     max-width: 100%;
-    max-height: calc(100vh - 6.5rem);
+    max-height: calc(100vh - 7rem);
+    max-height: calc(100dvh - 7rem);
   }
   .gal-lightbox-nav {
     position: absolute;
-    bottom: max(1rem, env(safe-area-inset-bottom));
-    width: 2.5rem;
-    height: 2.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.75rem;
+    height: 2.75rem;
+    /* Comfortable tap target beyond the visual circle */
+    margin: 0;
   }
-  .gal-lightbox-prev { left: max(0.75rem, env(safe-area-inset-left)); }
-  .gal-lightbox-next { right: max(0.75rem, env(safe-area-inset-right)); left: auto; }
+  .gal-lightbox-prev {
+    left: max(0.4rem, env(safe-area-inset-left, 0px));
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .gal-lightbox-next {
+    right: max(0.4rem, env(safe-area-inset-right, 0px));
+    left: auto;
+    grid-column: auto;
+    grid-row: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -5054,6 +5080,10 @@ body.gal-lightbox-open { overflow: hidden; }
   .photo-grid img { transition: none; }
   .gal-lightbox-close,
   .gal-lightbox-nav { transition: none; }
+  .gal-lightbox-nav { transform: none; }
+  @media (max-width: 640px) {
+    .gal-lightbox-nav { top: calc(50% - 1.375rem); }
+  }
 }
 
 html[data-admin-theme="dark"] body.page-admin .hp-jump a:hover { background: rgba(244, 241, 234, 0.08); }
